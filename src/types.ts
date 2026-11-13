@@ -88,4 +88,5 @@ export type Game = {
   teams: Team[] // 1–10 команд, разного размера
   rounds: Round[]
   rules: Rule[]
+  updatedAt?: number // когда игру последний раз меняли (для списка «Мои игры»)
 }

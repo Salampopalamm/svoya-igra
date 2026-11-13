@@ -3,11 +3,12 @@ import type { Round } from '../types'
 
 type Props = {
   round: Round
-  onCellClick: (categoryId: string, questionId: string) => void
+  interactive?: boolean // false — экран зала: ячейки не нажимаются
+  onCellClick?: (categoryId: string, questionId: string) => void
 }
 
 // Табло: категории строками, номиналы справа от названия категории.
-export default function Board({ round, onCellClick }: Props) {
+export default function Board({ round, interactive = true, onCellClick }: Props) {
   // Все номиналы раунда по возрастанию — это колонки табло
   const values = [...new Set(round.categories.flatMap((c) => c.questions.map((q) => q.value)))].sort(
     (a, b) => a - b,
@@ -32,12 +33,22 @@ export default function Board({ round, onCellClick }: Props) {
               return <div key={value} className="rounded-xl border-2 border-dashed border-line" />
             }
 
+            const cellClass = 'flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display text-3xl'
+
+            if (!interactive) {
+              return (
+                <div key={question.id} className={cellClass}>
+                  {value}
+                </div>
+              )
+            }
+
             return (
               <button
                 key={question.id}
                 type="button"
-                onClick={() => onCellClick(category.id, question.id)}
-                className="min-h-20 rounded-xl border-2 border-white font-display text-3xl transition hover:bg-white hover:text-black"
+                onClick={() => onCellClick?.(category.id, question.id)}
+                className={`${cellClass} transition hover:bg-white hover:text-black`}
               >
                 {value}
               </button>
