@@ -1,6 +1,14 @@
 // Модель данных игры. Описание — в плане проекта, раздел «Модель данных».
 
-export type MediaRef = { id: string; type: 'image' | 'gif' | 'video' | 'audio'; name: string }
+export type MediaType = 'image' | 'gif' | 'video' | 'audio'
+
+// Ссылка на файл. Сам файл лежит в отдельной таблице хранилища (MediaFile), в игре — только ссылка.
+export type MediaRef = { id: string; type: MediaType; name: string }
+
+// Сам файл в хранилище браузера
+export type MediaFile = { id: string; type: MediaType; name: string; blob: Blob }
+
+// Текст и/или файл: слайд вопроса, ответ, узел дерева
 export type Content = { text?: string; media?: MediaRef }
 
 export type Theme = {
@@ -54,7 +62,10 @@ export type Question = {
   id: string
   value: number
   kind: 'normal' | 'cat-in-bag' | 'auction'
-  prompt: Content
+  // Вопрос показывается слайдами по порядку, ведущий листает их стрелками.
+  // Обычно первый — текст вопроса или описание задания, следующие — суть: картинка, музыка, видео.
+  // Всегда хотя бы один слайд.
+  slides: Content[]
   answer: Content
   timerSec?: number
   hostNote?: string

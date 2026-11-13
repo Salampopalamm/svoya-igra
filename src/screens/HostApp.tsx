@@ -8,7 +8,7 @@ import type { Game } from '../types'
 
 // Свежая партия: игра из хранилища, всё по нулям
 function freshState(game: Game): LiveState {
-  return { game, current: null, showAnswer: false, answeringTeamId: null, screenHidden: false }
+  return { game, current: null, slideIndex: 0, showAnswer: false, answeringTeamId: null, screenHidden: false }
 }
 
 const HISTORY_LIMIT = 50
@@ -36,14 +36,18 @@ function withPlayed(s: LiveState, cell: Current): LiveState {
 }
 
 function withScore(s: LiveState, teamId: string, delta: number): LiveState {
+  return withTeamScore(s, teamId, (score) => score + delta)
+}
+
+function withTeamScore(s: LiveState, teamId: string, change: (score: number) => number): LiveState {
   return {
     ...s,
-    game: { ...s.game, teams: s.game.teams.map((t) => (t.id === teamId ? { ...t, score: t.score + delta } : t)) },
+    game: { ...s.game, teams: s.game.teams.map((t) => (t.id === teamId ? { ...t, score: change(t.score) } : t)) },
   }
 }
 
 function withClosed(s: LiveState): LiveState {
-  return { ...withPlayed(s, s.current), current: null, showAnswer: false, answeringTeamId: null }
+  return { ...withPlayed(s, s.current), current: null, slideIndex: 0, showAnswer: false, answeringTeamId: null }
 }
 
 // Пульт ведущего: управляет игрой и передаёт состояние экрану зала.
@@ -60,7 +64,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
 
-  const { game, current, showAnswer, answeringTeamId, screenHidden } = live
+  const { game, current, slideIndex, showAnswer, answeringTeamId, screenHidden } = live
   const round = game.rounds[0]
 
   // Канал связи: экран зала при открытии спрашивает «hello» — отвечаем текущим состоянием
@@ -113,7 +117,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
-    commit({ ...live, current: { categoryId, questionId }, showAnswer: false, answeringTeamId: null })
+    commit({ ...live, current: { categoryId, questionId }, slideIndex: 0, showAnswer: false, answeringTeamId: null })
   }
 
   function closeQuestion() {
@@ -128,6 +132,22 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   function handleWrong(teamId: string) {
     if (!currentCell.question) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null })
+  }
+
+  // Ручная правка счёта (вне вопроса тоже) — отменяется через Ctrl+Z
+  function adjustScore(teamId: string, delta: number) {
+    commit(withScore(live, teamId, delta))
+  }
+
+  // Ведущий вписал счёт целиком — тоже отменяется через Ctrl+Z
+  function setScore(teamId: string, score: number) {
+    commit(withTeamScore(live, teamId, () => score))
+  }
+
+  // Листать слайды открытого вопроса: зал сразу показывает выбранный слайд
+  function goToSlide(delta: number) {
+    const count = currentCell.question?.slides.length ?? 1
+    setLive((s) => ({ ...s, slideIndex: Math.min(Math.max(s.slideIndex + delta, 0), count - 1) }))
   }
 
   function showAnswerInHall() {
@@ -161,6 +181,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Горячие клавиши
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Пока ведущий вписывает счёт или жмёт клавиши в плеере — горячие клавиши молчат
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, audio, video')) return
+
       // Ctrl+Z — отменить последнее действие
       if (e.ctrlKey && e.code === 'KeyZ') {
         e.preventDefault()
@@ -178,6 +202,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.code === 'KeyP' && !current) togglePreviewMode()
 
       if (!current) return
+
+      // ← / → — предыдущий / следующий слайд вопроса
+      if (e.code === 'ArrowRight') goToSlide(1)
+      if (e.code === 'ArrowLeft') goToSlide(-1)
 
       // Пробел — показать ответ в зале
       if (e.code === 'Space') {
@@ -203,6 +231,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const allQuestions = round.categories.flatMap((c) => c.questions)
   const played = allQuestions.filter((q) => q.played).length
+  // Шаг ручной правки — самый маленький номинал раунда (обычно 100)
+  const scoreStep = allQuestions.length > 0 ? Math.min(...allQuestions.map((q) => q.value)) : 100
 
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-bg px-10 py-8 text-white">
@@ -276,16 +306,27 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onCorrect={handleCorrect}
           onWrong={handleWrong}
           onClose={closeQuestion}
+          slideIndex={slideIndex}
+          onPrevSlide={() => goToSlide(-1)}
+          onNextSlide={() => goToSlide(1)}
         />
       ) : (
         <Board round={round} onCellClick={handleCellClick} />
       )}
 
-      <Scoreboard teams={game.teams} answeringTeamId={answeringTeamId} />
+      <Scoreboard
+        teams={game.teams}
+        answeringTeamId={answeringTeamId}
+        onAdjust={adjustScore}
+        onSetScore={setScore}
+        step={scoreStep}
+      />
 
       <footer className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted">
         <span>P — предпросмотр</span>
+        <span>← / → — слайды вопроса</span>
         <span>Пробел — ответ в зале</span>
+        <span>Клик по счёту — вписать счёт</span>
         <span>1–9, 0 — отвечающая команда</span>
         <span>+ / − — верно / неверно</span>
         <span>Ctrl+Z — отменить</span>

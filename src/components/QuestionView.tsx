@@ -1,4 +1,5 @@
-import type { Question, Team } from '../types'
+import type { Content, Question, Team } from '../types'
+import { MediaView, SlideView } from './MediaView'
 
 type Props = {
   categoryTitle: string
@@ -11,6 +12,16 @@ type Props = {
   onCorrect: (teamId: string) => void
   onWrong: (teamId: string) => void
   onClose: () => void
+  slideIndex: number // какой слайд сейчас в зале
+  onPrevSlide: () => void
+  onNextSlide: () => void
+}
+
+// Короткая подсказка ведущему, что покажет следующий слайд
+function describeSlide(slide: Content) {
+  const kinds = { image: 'картинка', gif: 'GIF', video: 'видео', audio: 'музыка' }
+  const parts = [slide.media && `${kinds[slide.media.type]} «${slide.media.name}»`, slide.text && `«${slide.text}»`]
+  return parts.filter(Boolean).join(' + ')
 }
 
 // Открытый вопрос на пульте: ведущий всегда видит ответ, в зал он уходит по кнопке.
@@ -25,7 +36,14 @@ export default function QuestionView({
   onCorrect,
   onWrong,
   onClose,
+  slideIndex,
+  onPrevSlide,
+  onNextSlide,
 }: Props) {
+  const count = question.slides.length
+  const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
+  const next = question.slides[slideIndex + 1]
+
   return (
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
@@ -35,12 +53,38 @@ export default function QuestionView({
         <span className="text-sm text-muted">в зале сейчас этот вопрос</span>
       </div>
 
-      <p className="text-4xl leading-tight font-semibold">{question.prompt.text}</p>
+      <SlideView slide={slide} mode="host" textClass="text-4xl" mediaClass="max-h-[40vh] self-start" />
+
+      {count > 1 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={onPrevSlide}
+            disabled={slideIndex === 0}
+            className="h-11 rounded-lg border border-line px-4 hover:bg-cell disabled:opacity-40"
+          >
+            ← Назад
+          </button>
+          <span className="text-muted">
+            Слайд {slideIndex + 1} из {count}
+          </span>
+          <button
+            type="button"
+            onClick={onNextSlide}
+            disabled={slideIndex === count - 1}
+            className="h-11 rounded-lg border border-white px-4 font-semibold hover:bg-white hover:text-black disabled:opacity-40"
+          >
+            Дальше →
+          </button>
+          {next && <span className="text-sm text-muted">Дальше в зале: {describeSlide(next)}</span>}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center gap-4 rounded-xl border-2 border-dashed border-muted p-5">
         <div className="flex-1">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ · ВИДИТ ТОЛЬКО ВЕДУЩИЙ</div>
           <div className="mt-1 text-3xl font-semibold">{question.answer.text}</div>
+          {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
         </div>
         {showAnswer ? (
           <span className="text-muted">Ответ показан в зале</span>

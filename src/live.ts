@@ -8,6 +8,7 @@ export type Current = { categoryId: string; questionId: string } | null
 export type LiveState = {
   game: Game
   current: Current // открытый вопрос (null — табло)
+  slideIndex: number // какой слайд открытого вопроса сейчас в зале (с нуля)
   showAnswer: boolean // показан ли ответ в зале
   answeringTeamId: string | null // какая команда сейчас отвечает (подсветка)
   screenHidden: boolean // экран зала скрыт заставкой
@@ -18,11 +19,13 @@ export type Message = { type: 'state'; state: LiveState } | { type: 'hello' }
 // Канал связи между окнами одного браузера
 export const CHANNEL = 'svoya-igra'
 
-const STORAGE_KEY = 'svoya-igra:live'
+// v2 — вопросы из слайдов; сохранения старого вида просто не читаем
+const STORAGE_KEY = 'svoya-igra:live:v2'
 
 // Сохранение на случай, если вкладку пульта случайно закрыли
 export function loadState(): Partial<LiveState> | null {
   try {
+    localStorage.removeItem('svoya-igra:live') // сохранение старого вида больше не нужно
     const raw = localStorage.getItem(STORAGE_KEY)
     return raw ? (JSON.parse(raw) as Partial<LiveState>) : null
   } catch {

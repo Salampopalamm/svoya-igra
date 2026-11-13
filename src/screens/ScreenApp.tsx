@@ -25,7 +25,7 @@ export default function ScreenApp() {
     )
   }
 
-  const { game, current, showAnswer, answeringTeamId, screenHidden } = live
+  const { game, current, slideIndex, showAnswer, answeringTeamId, screenHidden } = live
 
   // Заставка: ведущий скрыл экран
   if (screenHidden) {
@@ -54,6 +54,7 @@ export default function ScreenApp() {
         <ScreenQuestion
           categoryTitle={category.title}
           question={question}
+          slideIndex={slideIndex}
           showAnswer={showAnswer}
           answeringTeamName={answeringTeam?.name}
         />

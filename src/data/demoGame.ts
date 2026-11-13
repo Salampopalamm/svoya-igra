@@ -1,22 +1,27 @@
-import type { Category, Game, Question } from '../types'
+import type { Category, Content, Game, Question } from '../types'
+import { demoAudioRef, demoImageRef } from './demoMedia'
 
 // Тестовая игра: 1 раунд, 6 категорий по 5 вопросов.
+// Два вопроса — из нескольких слайдов: сначала задание, потом картинка или музыка.
 // Позже её заменит игра, собранная в редакторе.
 
 let counter = 0
 const nextId = (prefix: string) => `${prefix}${++counter}`
 
-const question = (value: number, prompt: string, answer: string): Question => ({
+// Вопрос — либо одна строка (один слайд с текстом), либо список слайдов
+type Prompt = string | Content[]
+
+const question = (value: number, prompt: Prompt, answer: string): Question => ({
   id: nextId('q'),
   value,
   kind: 'normal',
-  prompt: { text: prompt },
+  slides: typeof prompt === 'string' ? [{ text: prompt }] : prompt,
   answer: { text: answer },
   played: false,
 })
 
 // Пары «вопрос — ответ» по возрастанию стоимости: 100, 200, 300, 400, 500
-const category = (title: string, items: [string, string][]): Category => ({
+const category = (title: string, items: [Prompt, string][]): Category => ({
   id: nextId('c'),
   title,
   questions: items.map(([prompt, answer], i) => question((i + 1) * 100, prompt, answer)),
@@ -59,7 +64,13 @@ export const demoGame: Game = {
           ['Сколько планет в Солнечной системе?', '8'],
           ['Химическая формула воды?', 'H₂O'],
           ['Какая планета ближе всех к Солнцу?', 'Меркурий'],
-          ['При какой температуре кипит вода на уровне моря?', '100 °C'],
+          [
+            [
+              { text: 'Сейчас прозвучит мелодия. Сколько разных нот вы услышите?' },
+              { text: 'Слушаем!', media: demoAudioRef },
+            ],
+            '7 — это гамма: до, ре, ми, фа, соль, ля, си',
+          ],
           ['Кто открыл закон всемирного тяготения?', 'Исаак Ньютон'],
         ]),
         category('Еда', [
@@ -79,7 +90,13 @@ export const demoGame: Game = {
         category('Животные', [
           ['Самое крупное животное на Земле?', 'Синий кит'],
           ['Сколько ног у паука?', '8'],
-          ['Какая нелетающая птица живёт в Антарктиде?', 'Пингвин'],
+          [
+            [
+              { text: 'На следующем слайде — картинка с кругами. Среди них спряталась звезда. Где она?' },
+              { media: demoImageRef },
+            ],
+            'Справа внизу',
+          ],
           ['Сколько сердец у осьминога?', '3'],
           ['Самое быстрое сухопутное животное?', 'Гепард'],
         ]),

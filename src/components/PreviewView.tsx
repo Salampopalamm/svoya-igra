@@ -1,4 +1,5 @@
 import type { Question } from '../types'
+import { MediaView, SlideView } from './MediaView'
 
 type Props = {
   categoryTitle: string
@@ -16,10 +17,20 @@ export default function PreviewView({ categoryTitle, question, onClose }: Props)
       <span className="font-display text-xl">
         {categoryTitle.toUpperCase()} · {question.value}
       </span>
-      <p className="text-3xl leading-snug font-semibold">{question.prompt.text}</p>
+      {question.slides.map((slide, i) => (
+        <div key={i} className="flex flex-col gap-2">
+          {question.slides.length > 1 && (
+            <span className="text-sm font-semibold tracking-widest text-muted">
+              СЛАЙД {i + 1} ИЗ {question.slides.length}
+            </span>
+          )}
+          <SlideView slide={slide} mode="host" textClass="text-3xl" mediaClass="max-h-[35vh] self-start" />
+        </div>
+      ))}
       <div className="rounded-xl border-2 border-dashed border-muted p-5">
         <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
         <div className="mt-2 text-2xl font-semibold">{question.answer.text}</div>
+        {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
       </div>
       <button
         type="button"
