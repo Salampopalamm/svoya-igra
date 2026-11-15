@@ -74,6 +74,12 @@ export default function LibraryApp() {
               >
                 Играть
               </a>
+              <a
+                href={`#/edit/${encodeURIComponent(game.id)}`}
+                className="flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell"
+              >
+                Изменить
+              </a>
               <button
                 type="button"
                 onClick={() => remove(game)}

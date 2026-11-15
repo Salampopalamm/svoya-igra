@@ -5,7 +5,8 @@ import type { Content, MediaRef } from '../types'
 // Где показываем: на пульте музыка играет (там ведущий жмёт «play»),
 // в зале вместо плеера — крупный значок. Звук идёт в колонки ноутбука или проектора
 // одинаково, из какого бы окна он ни играл, а пульт браузер не заглушает.
-export type MediaMode = 'host' | 'hall'
+// В редакторе всё можно посмотреть и послушать на месте.
+export type MediaMode = 'host' | 'hall' | 'editor'
 
 type Loaded = { id: string; url: string | null } // url = null — файла нет в хранилище
 
@@ -46,6 +47,7 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
   }
 
   if (media.type === 'audio') {
+    if (mode === 'editor') return <audio src={file.url} controls className={`w-full ${className}`} />
     if (mode === 'host') {
       return (
         <div className={`flex flex-col gap-2 ${className}`}>

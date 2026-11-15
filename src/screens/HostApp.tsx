@@ -4,6 +4,7 @@ import PreviewView from '../components/PreviewView'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import { CHANNEL, clearState, loadState, saveState, type Current, type LiveState, type Message } from '../live'
+import { mergeProgress } from '../game'
 import type { Game } from '../types'
 
 // Свежая партия: игра из хранилища, всё по нулям
@@ -52,10 +53,12 @@ function withClosed(s: LiveState): LiveState {
 
 // Пульт ведущего: управляет игрой и передаёт состояние экрану зала.
 export default function HostApp({ initialGame }: { initialGame: Game }) {
-  // Если вкладку закрывали посреди этой же игры — продолжаем с того же места
+  // Если вкладку закрывали посреди этой же игры — продолжаем с того же места.
+  // Вопросы берём свежие из хранилища (их могли поправить в редакторе), счёт и сыгранные ячейки — из партии.
   const [live, setLive] = useState<LiveState>(() => {
     const saved = loadState()
-    return saved?.game?.id === initialGame.id ? { ...freshState(initialGame), ...saved } : freshState(initialGame)
+    if (saved?.game?.id !== initialGame.id) return freshState(initialGame)
+    return { ...freshState(initialGame), ...saved, game: mergeProgress(initialGame, saved.game) }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
   const [previewMode, setPreviewMode] = useState(false) // только на пульте

@@ -1,7 +1,7 @@
 import Dexie, { type EntityTable } from 'dexie'
 import { demoGame } from './data/demoGame'
 import { demoMediaFiles } from './data/demoMedia'
-import type { Content, Game, MediaFile, Question } from './types'
+import type { Content, Game, MediaFile, MediaRef, MediaType, Question } from './types'
 
 // Хранилище в браузере (IndexedDB через библиотеку Dexie):
 //   games — игры (вопросы, команды, оформление); файлы в них — только ссылками MediaRef;
@@ -83,4 +83,37 @@ export function getMedia(id: string) {
 
 export function saveMedia(file: MediaFile) {
   return db.media.put(file)
+}
+
+export const MAX_FILE_MB = 200
+
+// Какой это файл — по его типу, а если браузер тип не определил, то по расширению
+function mediaTypeOf(file: File): MediaType | null {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? ''
+  if (file.type === 'image/gif' || ext === 'gif') return 'gif'
+  if (file.type.startsWith('image/') || ['png', 'jpg', 'jpeg', 'webp', 'svg'].includes(ext)) return 'image'
+  if (file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a'].includes(ext)) return 'audio'
+  if (file.type.startsWith('video/') || ['mp4', 'webm', 'mov'].includes(ext)) return 'video'
+  return null
+}
+
+// Положить файл с компьютера в хранилище. Возвращает ссылку, которую сохраняем в игре.
+// Если файл не подходит — ошибка с понятным текстом для пользователя.
+export async function addMediaFile(file: File): Promise<MediaRef> {
+  const type = mediaTypeOf(file)
+  if (!type) throw new Error(`«${file.name}» — не картинка, не музыка и не видео. Такой файл добавить нельзя.`)
+  if (file.size > MAX_FILE_MB * 1024 * 1024) {
+    throw new Error(
+      `«${file.name}» больше ${MAX_FILE_MB} МБ. Сожмите файл (для видео подойдёт программа HandBrake) и попробуйте снова.`,
+    )
+  }
+  const ref: MediaRef = { id: crypto.randomUUID(), type, name: file.name }
+  await db.media.put({ ...ref, blob: file })
+  return ref
+}
+
+// Удалить файл из хранилища, если на него больше не ссылается ни одна игра
+export async function deleteMediaIfUnused(id: string) {
+  const games = await db.games.toArray()
+  if (!games.some((game) => JSON.stringify(game).includes(id))) await db.media.delete(id)
 }

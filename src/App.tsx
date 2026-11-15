@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { getGame } from './db'
+import EditorApp from './screens/EditorApp'
 import HostApp from './screens/HostApp'
 import LibraryApp from './screens/LibraryApp'
 import ScreenApp from './screens/ScreenApp'
@@ -8,6 +9,7 @@ import type { Game } from './types'
 // Адреса внутри приложения (часть после #):
 //   #/              — «Мои игры»
 //   #/play/<id>     — пульт ведущего для игры <id>
+//   #/edit/<id>     — редактор игры <id>
 //   #/screen        — экран зала (открывается кнопкой на пульте)
 //   #/new           — мастер «Быстрая игра» (следующий шаг)
 export default function App() {
@@ -21,16 +23,32 @@ export default function App() {
 
   if (hash === '#/screen') return <ScreenApp />
 
+  // key={hash} — при переходе между пультом и редактором игра загружается из хранилища заново
   const play = /^#\/play\/(.+)$/.exec(hash)
-  if (play) return <HostRoute gameId={decodeURIComponent(play[1])} />
+  if (play) {
+    return (
+      <GameRoute key={hash} gameId={decodeURIComponent(play[1])}>
+        {(game) => <HostApp initialGame={game} />}
+      </GameRoute>
+    )
+  }
+
+  const edit = /^#\/edit\/(.+)$/.exec(hash)
+  if (edit) {
+    return (
+      <GameRoute key={hash} gameId={decodeURIComponent(edit[1])}>
+        {(game) => <EditorApp initialGame={game} />}
+      </GameRoute>
+    )
+  }
 
   if (hash === '#/new') return <Placeholder text="Мастер «Быстрая игра» появится на следующем шаге." />
 
   return <LibraryApp />
 }
 
-// Загружает игру из хранилища и открывает пульт
-function HostRoute({ gameId }: { gameId: string }) {
+// Загружает игру из хранилища и показывает для неё нужный экран
+function GameRoute({ gameId, children }: { gameId: string; children: (game: Game) => ReactNode }) {
   const [game, setGame] = useState<Game | null | undefined>(undefined)
 
   useEffect(() => {
@@ -39,7 +57,7 @@ function HostRoute({ gameId }: { gameId: string }) {
 
   if (game === undefined) return <Placeholder text="Загрузка игры…" />
   if (game === null) return <Placeholder text="Игра не найдена." />
-  return <HostApp key={game.id} initialGame={game} />
+  return children(game)
 }
 
 function Placeholder({ text }: { text: string }) {
