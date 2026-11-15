@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import QuestionEditor from '../components/QuestionEditor'
-import { deleteMediaIfUnused, saveGame } from '../db'
+import { useSavedGame } from '../useSavedGame'
 import {
   isEmptyQuestion,
   mediaIdsOf,
@@ -29,28 +29,8 @@ function cellNote(question: Question): string | null {
 // Редактор игры: название, категории строками, клик по ячейке открывает редактор вопроса.
 // Правки сохраняются сами.
 export default function EditorApp({ initialGame }: { initialGame: Game }) {
-  const [game, setGame] = useState(initialGame)
+  const { game, change, saved, dropMedia } = useSavedGame(initialGame)
   const [selectedId, setSelectedId] = useState<string | null>(null) // какой вопрос открыт
-  const [saved, setSaved] = useState(true)
-  const removedMedia = useRef<string[]>([]) // файлы, убранные из игры: удалим после сохранения
-
-  // Автосохранение: после каждой правки кладём игру в хранилище
-  useEffect(() => {
-    if (game === initialGame) return // ничего ещё не меняли
-    let cancelled = false
-    saveGame(game).then(async () => {
-      for (const id of removedMedia.current.splice(0)) await deleteMediaIfUnused(id)
-      if (!cancelled) setSaved(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [game, initialGame])
-
-  function change(update: (g: Game) => Game) {
-    setSaved(false)
-    setGame(update)
-  }
 
   const round = game.rounds[0]
   const category = round.categories.find((c) => c.questions.some((q) => q.id === selectedId))
@@ -64,7 +44,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
     const filled = c.questions.filter((q) => !isEmptyQuestion(q)).length
     const warning = filled > 0 ? ` В ней ${filled} заполненных вопросов.` : ''
     if (!window.confirm(`Удалить категорию «${c.title}»?${warning} Это нельзя отменить.`)) return
-    removedMedia.current.push(...c.questions.flatMap(mediaIdsOf))
+    dropMedia(...c.questions.flatMap(mediaIdsOf))
     change((g) => removeCategory(g, c.id))
   }
 
@@ -77,7 +57,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
 
   function deleteQuestion(q: Question) {
     if (!isEmptyQuestion(q) && !window.confirm(`Удалить вопрос за ${q.value}? Это нельзя отменить.`)) return
-    removedMedia.current.push(...mediaIdsOf(q))
+    dropMedia(...mediaIdsOf(q))
     change((g) => removeQuestion(g, q.id))
     setSelectedId(null)
   }
@@ -108,6 +88,12 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
             {saved ? 'Все изменения сохранены' : 'Сохраняю…'}
           </span>
           <a
+            href={`#/teams/${encodeURIComponent(game.id)}`}
+            className="flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell"
+          >
+            Команды · {game.teams.length}
+          </a>
+          <a
             href={`#/play/${encodeURIComponent(game.id)}`}
             className="flex h-11 items-center rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90"
           >
@@ -122,7 +108,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           categoryTitle={category.title}
           question={question}
           onChange={(update) => change((g) => updateQuestion(g, question.id, update))}
-          onMediaRemoved={(id) => removedMedia.current.push(id)}
+          onMediaRemoved={(id) => dropMedia(id)}
           onDelete={() => deleteQuestion(question)}
           otherValues={category.questions.filter((q) => q.id !== question.id).map((q) => q.value)}
           onClose={() => setSelectedId(null)}

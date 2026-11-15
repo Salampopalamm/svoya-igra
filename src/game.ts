@@ -73,6 +73,43 @@ export function isEmptyQuestion(question: Question): boolean {
   return [...question.slides, question.answer].every((c) => !c.text?.trim() && !c.media)
 }
 
+// ---- Команды ----
+
+export const MAX_TEAMS = 10 // 1–10: на пульте команды выбираются клавишами 1–9 и 0
+
+// Добавить команду в конец: «Команда N», где N — первый свободный номер
+export function addTeam(game: Game): Game {
+  if (game.teams.length >= MAX_TEAMS) return game
+  const names = new Set(game.teams.map((t) => t.name))
+  let n = game.teams.length + 1
+  while (names.has(`Команда ${n}`)) n++
+  return { ...game, teams: [...game.teams, { id: newId(), name: `Команда ${n}`, score: 0 }] }
+}
+
+export function renameTeam(game: Game, teamId: string, name: string): Game {
+  return { ...game, teams: game.teams.map((t) => (t.id === teamId ? { ...t, name } : t)) }
+}
+
+// Убрать команду; последнюю оставшуюся убрать нельзя
+export function removeTeam(game: Game, teamId: string): Game {
+  if (game.teams.length <= 1) return game
+  return {
+    ...game,
+    teams: game.teams.filter((t) => t.id !== teamId),
+    players: game.players.map((p) => (p.teamId === teamId ? { ...p, teamId: undefined } : p)),
+  }
+}
+
+// Поменять команду местами с соседней: от порядка зависит номер и клавиша на пульте
+export function moveTeam(game: Game, teamId: string, delta: number): Game {
+  const index = game.teams.findIndex((t) => t.id === teamId)
+  const target = index + delta
+  if (index < 0 || target < 0 || target >= game.teams.length) return game
+  const teams = [...game.teams]
+  ;[teams[index], teams[target]] = [teams[target], teams[index]]
+  return { ...game, teams }
+}
+
 // Копия игры с новым id и названием «… (копия)». Файлы общие: удаляются, только когда не нужны ни одной игре.
 export function copyGame(game: Game): Game {
   return { ...game, id: newId(), title: `${game.title} (копия)` }

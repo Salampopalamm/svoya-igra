@@ -4,12 +4,14 @@ import EditorApp from './screens/EditorApp'
 import HostApp from './screens/HostApp'
 import LibraryApp from './screens/LibraryApp'
 import ScreenApp from './screens/ScreenApp'
+import TeamsApp from './screens/TeamsApp'
 import type { Game } from './types'
 
 // Адреса внутри приложения (часть после #):
 //   #/              — «Мои игры»
 //   #/play/<id>     — пульт ведущего для игры <id>
 //   #/edit/<id>     — редактор игры <id>
+//   #/teams/<id>    — команды игры <id>
 //   #/screen        — экран зала (открывается кнопкой на пульте)
 //   #/new           — мастер «Быстрая игра» (следующий шаг)
 export default function App() {
@@ -38,6 +40,15 @@ export default function App() {
     return (
       <GameRoute key={hash} gameId={decodeURIComponent(edit[1])}>
         {(game) => <EditorApp initialGame={game} />}
+      </GameRoute>
+    )
+  }
+
+  const teams = /^#\/teams\/(.+)$/.exec(hash)
+  if (teams) {
+    return (
+      <GameRoute key={hash} gameId={decodeURIComponent(teams[1])}>
+        {(game) => <TeamsApp initialGame={game} />}
       </GameRoute>
     )
   }

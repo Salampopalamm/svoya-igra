@@ -58,7 +58,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [live, setLive] = useState<LiveState>(() => {
     const saved = loadState()
     if (saved?.game?.id !== initialGame.id) return freshState(initialGame)
-    return { ...freshState(initialGame), ...saved, game: mergeProgress(initialGame, saved.game) }
+    const game = mergeProgress(initialGame, saved.game)
+    // Отвечающую команду могли удалить на экране «Команды» — тогда снимаем выбор
+    const answering = game.teams.some((t) => t.id === saved.answeringTeamId) ? saved.answeringTeamId : null
+    return { ...freshState(initialGame), ...saved, game, answeringTeamId: answering ?? null }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
@@ -243,6 +246,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <div className="flex items-baseline gap-4">
           <a href="#/" className="text-sm text-muted hover:text-white">
             ← Мои игры
+          </a>
+          <a href={`#/teams/${encodeURIComponent(game.id)}`} className="text-sm text-muted hover:text-white">
+            Команды
           </a>
           <span className="font-display text-xl">ПУЛЬТ</span>
           <span className="text-muted">
