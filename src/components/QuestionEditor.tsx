@@ -9,12 +9,29 @@ type Props = {
   // Изменить вопрос: получает текущий вопрос, возвращает новый
   onChange: (change: (q: Question) => Question) => void
   onMediaRemoved: (mediaId: string) => void // файл убрали из вопроса — его можно удалить из хранилища
+  onDelete: () => void
   onClose: () => void
+  otherValues: number[] // стоимости других вопросов этой категории — чтобы предупредить о повторе
 }
 
-// Редактор вопроса: слайды (текст и файл на каждом) и ответ. Сохраняется сам после каждой правки.
-export default function QuestionEditor({ categoryTitle, question, onChange, onMediaRemoved, onClose }: Props) {
+// Редактор вопроса: стоимость, слайды (текст и файл на каждом) и ответ. Сохраняется сам после каждой правки.
+export default function QuestionEditor({
+  categoryTitle,
+  question,
+  onChange,
+  onMediaRemoved,
+  onDelete,
+  onClose,
+  otherValues,
+}: Props) {
   const { slides } = question
+  const [valueText, setValueText] = useState(String(question.value)) // что набрано в поле «Стоимость»
+
+  function changeValue(text: string) {
+    setValueText(text)
+    const value = Number(text.trim())
+    if (text.trim() !== '' && Number.isInteger(value) && value > 0) onChange((q) => ({ ...q, value }))
+  }
 
   function changeSlide(index: number, change: (slide: Content) => Content) {
     onChange((q) => ({ ...q, slides: q.slides.map((s, i) => (i === index ? change(s) : s)) }))
@@ -44,13 +61,34 @@ export default function QuestionEditor({ categoryTitle, question, onChange, onMe
   return (
     <div className="flex flex-col gap-5 rounded-xl border border-line bg-cell p-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
-        <span className="font-display text-xl">
-          {categoryTitle.toUpperCase()} · {question.value}
-        </span>
-        <button type="button" onClick={onClose} className="h-11 rounded-lg border border-white px-5 hover:bg-white hover:text-black">
-          Готово
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="font-display text-xl">{categoryTitle.toUpperCase()}</span>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Стоимость
+            <input
+              inputMode="numeric"
+              value={valueText}
+              onChange={(e) => changeValue(e.target.value)}
+              onBlur={() => setValueText(String(question.value))} // неверное число — вернуть сохранённое
+              className="h-11 w-28 rounded-lg border border-line bg-bg px-3 font-display text-xl text-white focus:border-white focus:outline-none"
+            />
+          </label>
+        </div>
+        <div className="flex gap-2">
+          <button type="button" onClick={onDelete} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
+            Удалить вопрос
+          </button>
+          <button type="button" onClick={onClose} className="h-11 rounded-lg border border-white px-5 hover:bg-white hover:text-black">
+            Готово
+          </button>
+        </div>
       </div>
+
+      {otherValues.includes(question.value) && (
+        <p role="alert" className="rounded-lg border border-white px-3 py-2 text-sm">
+          В категории уже есть вопрос за {question.value}. На табло будет виден только один из них — поменяйте стоимость.
+        </p>
+      )}
 
       <p className="text-sm text-muted">
         Вопрос показывается слайдами по порядку. Обычно на первом — задание, на втором — картинка или музыка. Ведущий

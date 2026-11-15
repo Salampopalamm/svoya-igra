@@ -1,6 +1,82 @@
-import type { Game, Question } from './types'
+import type { Category, Game, Question, Round } from './types'
 
 // Чистые функции для работы с игрой: берут игру и возвращают новую, старую не меняют.
+
+const newId = () => crypto.randomUUID()
+
+// Пустой вопрос: один пустой слайд, пустой ответ
+export function newQuestion(value: number): Question {
+  return { id: newId(), value, kind: 'normal', slides: [{}], answer: {}, played: false }
+}
+
+// Новая категория — сразу с пятью пустыми вопросами 100…500, как на обычном табло
+export function newCategory(): Category {
+  return { id: newId(), title: 'Новая категория', questions: [100, 200, 300, 400, 500].map(newQuestion) }
+}
+
+// Изменить один раунд (по id)
+export function updateRound(game: Game, roundId: string, change: (r: Round) => Round): Game {
+  return { ...game, rounds: game.rounds.map((r) => (r.id === roundId ? change(r) : r)) }
+}
+
+// Изменить одну категорию (по id) в любом раунде
+export function updateCategory(game: Game, categoryId: string, change: (c: Category) => Category): Game {
+  return {
+    ...game,
+    rounds: game.rounds.map((r) => ({ ...r, categories: r.categories.map((c) => (c.id === categoryId ? change(c) : c)) })),
+  }
+}
+
+// Убрать категорию из игры
+export function removeCategory(game: Game, categoryId: string): Game {
+  return { ...game, rounds: game.rounds.map((r) => ({ ...r, categories: r.categories.filter((c) => c.id !== categoryId) })) }
+}
+
+// Поменять категорию местами с соседней: delta = -1 — выше, +1 — ниже
+export function moveCategory(game: Game, categoryId: string, delta: number): Game {
+  return {
+    ...game,
+    rounds: game.rounds.map((r) => {
+      const index = r.categories.findIndex((c) => c.id === categoryId)
+      const target = index + delta
+      if (index < 0 || target < 0 || target >= r.categories.length) return r
+      const categories = [...r.categories]
+      ;[categories[index], categories[target]] = [categories[target], categories[index]]
+      return { ...r, categories }
+    }),
+  }
+}
+
+// Убрать вопрос из игры
+export function removeQuestion(game: Game, questionId: string): Game {
+  return {
+    ...game,
+    rounds: game.rounds.map((r) => ({
+      ...r,
+      categories: r.categories.map((c) => ({ ...c, questions: c.questions.filter((q) => q.id !== questionId) })),
+    })),
+  }
+}
+
+// Вопросы категории по возрастанию стоимости (так они стоят на табло)
+export function sortByValue(questions: Question[]): Question[] {
+  return [...questions].sort((a, b) => a.value - b.value)
+}
+
+// id всех файлов вопроса — чтобы удалить их из хранилища вместе с вопросом
+export function mediaIdsOf(question: Question): string[] {
+  return [...question.slides, question.answer].flatMap((c) => (c.media ? [c.media.id] : []))
+}
+
+// Есть ли в вопросе хоть что-то (текст или файл)
+export function isEmptyQuestion(question: Question): boolean {
+  return [...question.slides, question.answer].every((c) => !c.text?.trim() && !c.media)
+}
+
+// Копия игры с новым id и названием «… (копия)». Файлы общие: удаляются, только когда не нужны ни одной игре.
+export function copyGame(game: Game): Game {
+  return { ...game, id: newId(), title: `${game.title} (копия)` }
+}
 
 // Все вопросы игры одним списком
 export function allQuestions(game: Game): Question[] {

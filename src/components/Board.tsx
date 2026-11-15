@@ -1,15 +1,14 @@
 import { Fragment } from 'react'
-import type { Question, Round } from '../types'
+import type { Round } from '../types'
 
 type Props = {
   round: Round
   interactive?: boolean // false — экран зала: ячейки не нажимаются
   onCellClick?: (categoryId: string, questionId: string) => void
-  cellNote?: (question: Question) => string | null // мелкая подпись под номиналом (в редакторе)
 }
 
 // Табло: категории строками, номиналы справа от названия категории.
-export default function Board({ round, interactive = true, onCellClick, cellNote }: Props) {
+export default function Board({ round, interactive = true, onCellClick }: Props) {
   // Все номиналы раунда по возрастанию — это колонки табло
   const values = [...new Set(round.categories.flatMap((c) => c.questions.map((q) => q.value)))].sort(
     (a, b) => a - b,
@@ -34,8 +33,7 @@ export default function Board({ round, interactive = true, onCellClick, cellNote
               return <div key={value} className="rounded-xl border-2 border-dashed border-line" />
             }
 
-            const note = cellNote?.(question)
-            const cellClass ='flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display text-3xl'
+            const cellClass = 'flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display text-3xl'
 
             if (!interactive) {
               return (
@@ -50,10 +48,9 @@ export default function Board({ round, interactive = true, onCellClick, cellNote
                 key={question.id}
                 type="button"
                 onClick={() => onCellClick?.(category.id, question.id)}
-                className={`${cellClass} flex-col transition hover:bg-white hover:text-black`}
+                className={`${cellClass} transition hover:bg-white hover:text-black`}
               >
                 {value}
-                {note && <span className="font-sans text-sm font-normal">{note}</span>}
               </button>
             )
           })}

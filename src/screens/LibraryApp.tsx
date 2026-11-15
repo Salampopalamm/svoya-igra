@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { deleteGame, listGames } from '../db'
+import { deleteGame, deleteMediaIfUnused, listGames, saveGame } from '../db'
+import { allQuestions, copyGame, mediaIdsOf } from '../game'
 import type { Game } from '../types'
 
 // Стартовый экран «Мои игры»: создать игру, открыть файл, список своих игр.
@@ -15,6 +16,14 @@ export default function LibraryApp() {
   async function remove(game: Game) {
     if (!window.confirm(`Удалить игру «${game.title}»? Это нельзя отменить.`)) return
     await deleteGame(game.id)
+    // Файлы этой игры больше не нужны, если их не использует другая игра (например, её копия)
+    for (const id of allQuestions(game).flatMap(mediaIdsOf)) await deleteMediaIfUnused(id)
+    reload()
+  }
+
+  // Копия игры: удобно начать новую игру с готовой и поменять вопросы
+  async function duplicate(game: Game) {
+    await saveGame(copyGame(game))
     reload()
   }
 
@@ -80,6 +89,13 @@ export default function LibraryApp() {
               >
                 Изменить
               </a>
+              <button
+                type="button"
+                onClick={() => duplicate(game)}
+                className="h-11 rounded-lg border border-line px-4 hover:bg-cell"
+              >
+                Дублировать
+              </button>
               <button
                 type="button"
                 onClick={() => remove(game)}
