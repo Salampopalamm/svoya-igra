@@ -1,18 +1,47 @@
-import { addTeam, MAX_TEAMS, moveTeam, removeTeam, renameTeam } from '../game'
-import type { Game, Team } from '../types'
+import { useState, type ReactNode } from 'react'
+import PlayerAvatar from '../components/PlayerAvatar'
+import PlayersList from '../components/PlayersList'
+import {
+  addPlayers,
+  addTeam,
+  distributeRandomly,
+  MAX_TEAMS,
+  moveTeam,
+  removeTeam,
+  renameTeam,
+  updatePlayer,
+  updateTeam,
+} from '../game'
+import type { Game, Player, Team } from '../types'
 import { useSavedGame } from '../useSavedGame'
 
-// Экран «Команды и игроки» (макет «Players»). Пока только команды: название, порядок, добавить, удалить.
-// Участники, фото и случайное распределение — следующий этап.
+type Change = (update: (g: Game) => Game) => void
+
+const ghostButton = 'h-11 min-w-11 rounded-lg border border-line px-3 text-sm hover:bg-cell disabled:opacity-40'
+
+// Экран «Команды и игроки» (макет «Players»): слева общий список участников, справа команды.
 // Открывается и перед игрой, и во время неё: счёт при правке команд не сбрасывается.
 export default function TeamsApp({ initialGame }: { initialGame: Game }) {
-  const { game, change, saved } = useSavedGame(initialGame)
-  const { teams } = game
-  const playHref = `#/play/${encodeURIComponent(game.id)}`
+  const { game, change, saved, dropMedia } = useSavedGame(initialGame)
+  const { teams, players } = game
+  const unassigned = players.filter((p) => !teams.some((t) => t.id === p.teamId))
 
   function remove(team: Team) {
-    if (!window.confirm(`Удалить команду «${team.name}»? Её счёт в текущей игре тоже пропадёт.`)) return
+    const members = players.filter((p) => p.teamId === team.id).length
+    const note = members > 0 ? ` Её участники (${members}) останутся без команды.` : ''
+    if (!window.confirm(`Удалить команду «${team.name}»?${note} Её счёт в текущей игре тоже пропадёт.`)) return
     change((g) => removeTeam(g, team.id))
+  }
+
+  function shuffleTeams() {
+    const manual = players.some((p) => !p.locked && p.teamId)
+    if (manual && !window.confirm('Перемешать заново? Все, кроме капитанов, окажутся в новых командах.')) return
+    change((g) => distributeRandomly(g))
+  }
+
+  // Перетаскивание игрока: в команду (teamId) или в «Без команды» (undefined)
+  function moveTo(playerId: string, teamId: string | undefined) {
+    change((g) => updatePlayer(g, playerId, (p) => ({ ...p, teamId })))
   }
 
   return (
@@ -29,14 +58,11 @@ export default function TeamsApp({ initialGame }: { initialGame: Game }) {
           <span className="mr-2 text-sm text-muted" aria-live="polite">
             {saved ? 'Все изменения сохранены' : 'Сохраняю…'}
           </span>
-          <a
-            href={`#/edit/${encodeURIComponent(game.id)}`}
-            className="flex h-11 items-center rounded-lg border border-line px-4 text-sm hover:bg-cell"
-          >
+          <a href={`#/edit/${encodeURIComponent(game.id)}`} className={`flex items-center ${ghostButton}`}>
             Вопросы
           </a>
           <a
-            href={playHref}
+            href={`#/play/${encodeURIComponent(game.id)}`}
             className="flex h-11 items-center rounded-lg bg-white px-4 text-sm font-semibold text-black hover:opacity-90"
           >
             К игре
@@ -44,84 +70,238 @@ export default function TeamsApp({ initialGame }: { initialGame: Game }) {
         </div>
       </header>
 
-      <main className="flex flex-col gap-3 p-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xs font-semibold tracking-widest text-muted">
-            КОМАНДЫ · {teams.length} из {MAX_TEAMS}
-          </h2>
-          <button
-            type="button"
-            onClick={() => change(addTeam)}
-            disabled={teams.length >= MAX_TEAMS}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
-          >
-            + Команда
-          </button>
-        </div>
+      <main className="grid flex-1 gap-6 p-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(440px, 1fr))' }}>
+        <PlayersList game={game} change={change} dropMedia={dropMedia} />
 
-        <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
-          {teams.map((team, i) => (
-            <div key={team.id} className="flex flex-col gap-2.5 rounded-xl border border-line p-3.5">
-              <div className="flex items-center gap-3">
-                <span
-                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-white font-display text-lg"
-                  title={`На пульте — клавиша ${i === 9 ? 0 : i + 1}`}
-                >
-                  {i === 9 ? 0 : i + 1}
-                </span>
-                <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
-                  Название
-                  <input
-                    value={team.name}
-                    onChange={(e) => {
-                      const name = e.target.value
-                      change((g) => renameTeam(g, team.id, name))
-                    }}
-                    onBlur={() => {
-                      if (!team.name.trim()) change((g) => renameTeam(g, team.id, `Команда ${i + 1}`))
-                    }}
-                    className="h-10 rounded-lg border border-line bg-cell px-2.5 text-sm font-semibold text-white focus:border-white focus:outline-none"
-                  />
-                </label>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => change((g) => moveTeam(g, team.id, -1))}
-                  disabled={i === 0}
-                  aria-label={`Сдвинуть команду «${team.name}» левее`}
-                  className="h-11 min-w-11 rounded-lg border border-line text-sm hover:bg-cell disabled:opacity-40"
-                >
-                  ←
-                </button>
-                <button
-                  type="button"
-                  onClick={() => change((g) => moveTeam(g, team.id, 1))}
-                  disabled={i === teams.length - 1}
-                  aria-label={`Сдвинуть команду «${team.name}» правее`}
-                  className="h-11 min-w-11 rounded-lg border border-line text-sm hover:bg-cell disabled:opacity-40"
-                >
-                  →
-                </button>
-                <button
-                  type="button"
-                  onClick={() => remove(team)}
-                  disabled={teams.length <= 1}
-                  aria-label={`Удалить команду «${team.name}»`}
-                  className="ml-auto h-11 rounded-lg border border-line px-3 text-sm hover:bg-cell disabled:opacity-40"
-                >
-                  Удалить
-                </button>
-              </div>
+        <section className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold tracking-widest text-muted">
+              КОМАНДЫ · {teams.length} из {MAX_TEAMS}
+            </h2>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={shuffleTeams}
+                disabled={players.length === 0}
+                className="h-11 rounded-lg bg-white px-4 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-40"
+              >
+                Распределить случайно
+              </button>
+              <button
+                type="button"
+                onClick={() => change(addTeam)}
+                disabled={teams.length >= MAX_TEAMS}
+                className={ghostButton}
+              >
+                + Команда
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        <p className="text-sm text-muted">
-          Номер команды — клавиша на пульте, которой ведущий выбирает отвечающих (0 — десятая команда). Названия сразу
-          видны в зале, когда вы вернётесь к игре. Участники с фото и случайное распределение появятся на следующем шаге.
-        </p>
+          <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+            {teams.map((team, i) => (
+              <TeamCard
+                key={team.id}
+                team={team}
+                index={i}
+                count={teams.length}
+                members={players.filter((p) => p.teamId === team.id)}
+                change={change}
+                onRemove={() => remove(team)}
+                onDropPlayer={(playerId) => moveTo(playerId, team.id)}
+              />
+            ))}
+          </div>
+
+          {unassigned.length > 0 && (
+            <DropZone onDropPlayer={(playerId) => moveTo(playerId, undefined)} className="rounded-xl border border-dashed border-line p-3.5">
+              <h3 className="mb-2 text-xs font-semibold tracking-widest text-muted">БЕЗ КОМАНДЫ · {unassigned.length}</h3>
+              <PlayerChips players={unassigned} />
+            </DropZone>
+          )}
+
+          <p className="text-sm text-muted">
+            Игроков можно перетаскивать между командами. Номер команды — клавиша на пульте, которой ведущий выбирает
+            отвечающих (0 — десятая). Названия сразу видны в зале, когда вы вернётесь к игре.
+          </p>
+        </section>
       </main>
+    </div>
+  )
+}
+
+// Карточка команды: название, размер, игроки, «+ игрок», порядок, удалить
+function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer }: {
+  team: Team
+  index: number
+  count: number
+  members: Player[]
+  change: Change
+  onRemove: () => void
+  onDropPlayer: (playerId: string) => void
+}) {
+  const [adding, setAdding] = useState(false) // открыто поле «+ игрок»
+  const [newName, setNewName] = useState('')
+  const [sizeText, setSizeText] = useState(team.targetSize ? String(team.targetSize) : '')
+
+  function changeSize(text: string) {
+    setSizeText(text)
+    const size = Number(text)
+    const targetSize = text.trim() !== '' && Number.isInteger(size) && size > 0 ? size : undefined
+    if (text.trim() === '' || targetSize) change((g) => updateTeam(g, team.id, (t) => ({ ...t, targetSize })))
+  }
+
+  return (
+    <DropZone onDropPlayer={onDropPlayer} className="flex flex-col gap-2.5 rounded-xl border border-line p-3.5">
+      <div className="flex items-center gap-3">
+        <span
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-2 border-white font-display text-lg"
+          title={`На пульте — клавиша ${index === 9 ? 0 : index + 1}`}
+        >
+          {index === 9 ? 0 : index + 1}
+        </span>
+        <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
+          Название
+          <input
+            value={team.name}
+            onChange={(e) => {
+              const name = e.target.value
+              change((g) => renameTeam(g, team.id, name))
+            }}
+            onBlur={() => {
+              if (!team.name.trim()) change((g) => renameTeam(g, team.id, `Команда ${index + 1}`))
+            }}
+            className="h-10 rounded-lg border border-line bg-cell px-2.5 text-sm font-semibold text-white focus:border-white focus:outline-none"
+          />
+        </label>
+      </div>
+
+      <label className="flex items-center justify-between gap-2 text-sm text-muted">
+        Размер (пусто — поровну)
+        <input
+          inputMode="numeric"
+          value={sizeText}
+          onChange={(e) => changeSize(e.target.value)}
+          onBlur={() => setSizeText(team.targetSize ? String(team.targetSize) : '')}
+          placeholder="—"
+          className="h-10 w-16 rounded-lg border border-line bg-cell px-2.5 text-sm text-white focus:border-white focus:outline-none"
+        />
+      </label>
+
+      <PlayerChips players={members} />
+
+      {adding ? (
+        <form
+          className="flex gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            if (!newName.trim()) return
+            change((g) => addPlayers(g, [newName], team.id))
+            setNewName('') // поле остаётся открытым — можно сразу ввести следующего
+          }}
+        >
+          <input
+            autoFocus
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setAdding(false)
+            }}
+            aria-label={`Имя нового игрока команды «${team.name}»`}
+            placeholder="Имя, затем Enter"
+            className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-cell px-2.5 text-sm text-white focus:border-white focus:outline-none"
+          />
+          <button type="button" onClick={() => setAdding(false)} className={ghostButton}>
+            Готово
+          </button>
+        </form>
+      ) : (
+        <button type="button" onClick={() => setAdding(true)} className={`self-start ${ghostButton}`}>
+          + игрок
+        </button>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => change((g) => moveTeam(g, team.id, -1))}
+          disabled={index === 0}
+          aria-label={`Сдвинуть команду «${team.name}» левее`}
+          className={ghostButton}
+        >
+          ←
+        </button>
+        <button
+          type="button"
+          onClick={() => change((g) => moveTeam(g, team.id, 1))}
+          disabled={index === count - 1}
+          aria-label={`Сдвинуть команду «${team.name}» правее`}
+          className={ghostButton}
+        >
+          →
+        </button>
+        <button
+          type="button"
+          onClick={onRemove}
+          disabled={count <= 1}
+          aria-label={`Удалить команду «${team.name}»`}
+          className={`ml-auto ${ghostButton}`}
+        >
+          Удалить
+        </button>
+      </div>
+    </DropZone>
+  )
+}
+
+// Игроки плашками: фото или инициалы, имя, «капитан». Плашку можно перетащить мышкой.
+function PlayerChips({ players }: { players: Player[] }) {
+  if (players.length === 0) return <span className="text-sm text-muted">Пока никого</span>
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {players.map((p) => (
+        <span
+          key={p.id}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.setData('text/plain', p.id)
+            e.dataTransfer.effectAllowed = 'move'
+          }}
+          title="Перетащите в другую команду"
+          className="flex cursor-grab items-center gap-1.5 rounded-full bg-cell py-1 pr-3 pl-1 text-xs"
+        >
+          <PlayerAvatar player={p} size={24} />
+          {p.name}
+          {p.locked && ' · капитан'}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+// Область, куда можно бросить перетаскиваемого игрока; при наведении подсвечивается
+function DropZone({ onDropPlayer, className, children }: {
+  onDropPlayer: (playerId: string) => void
+  className: string
+  children: ReactNode
+}) {
+  const [over, setOver] = useState(false)
+  return (
+    <div
+      onDragOver={(e) => {
+        e.preventDefault()
+        setOver(true)
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setOver(false)
+        const playerId = e.dataTransfer.getData('text/plain')
+        if (playerId) onDropPlayer(playerId)
+      }}
+      className={`${className} ${over ? 'outline-2 outline-offset-2 outline-white outline-dashed' : ''}`}
+    >
+      {children}
     </div>
   )
 }

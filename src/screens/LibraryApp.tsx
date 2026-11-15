@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { deleteGame, deleteMediaIfUnused, listGames, saveGame } from '../db'
-import { allQuestions, copyGame, mediaIdsOf } from '../game'
+import { allMediaIds, copyGame } from '../game'
 import type { Game } from '../types'
 
 // Стартовый экран «Мои игры»: создать игру, открыть файл, список своих игр.
@@ -17,7 +17,7 @@ export default function LibraryApp() {
     if (!window.confirm(`Удалить игру «${game.title}»? Это нельзя отменить.`)) return
     await deleteGame(game.id)
     // Файлы этой игры больше не нужны, если их не использует другая игра (например, её копия)
-    for (const id of allQuestions(game).flatMap(mediaIdsOf)) await deleteMediaIfUnused(id)
+    for (const id of allMediaIds(game)) await deleteMediaIfUnused(id)
     reload()
   }
 
@@ -88,6 +88,12 @@ export default function LibraryApp() {
                 className="flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell"
               >
                 Изменить
+              </a>
+              <a
+                href={`#/teams/${encodeURIComponent(game.id)}`}
+                className="flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell"
+              >
+                Команды · {game.teams.length}
               </a>
               <button
                 type="button"

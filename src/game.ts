@@ -1,4 +1,4 @@
-import type { Category, Game, Question, Round } from './types'
+import type { Category, Game, Player, Question, Round, Team } from './types'
 
 // Чистые функции для работы с игрой: берут игру и возвращают новую, старую не меняют.
 
@@ -9,9 +9,58 @@ export function newQuestion(value: number): Question {
   return { id: newId(), value, kind: 'normal', slides: [{}], answer: {}, played: false }
 }
 
-// Новая категория — сразу с пятью пустыми вопросами 100…500, как на обычном табло
-export function newCategory(): Category {
-  return { id: newId(), title: 'Новая категория', questions: [100, 200, 300, 400, 500].map(newQuestion) }
+// ---- Сетка: сколько вопросов в категории ----
+
+export const MAX_QUESTIONS = 10 // больше 10 номиналов в строке табло не помещается
+export const GRID_SIZES = [5, 8, 10] // готовые сетки
+export const DEFAULT_GRID = 10
+
+// Номиналы сетки: 100, 200, … size × 100
+const gridValues = (size: number) => Array.from({ length: size }, (_, i) => (i + 1) * 100)
+
+// Новая категория с пустыми вопросами; по умолчанию 10 вопросов: 100…1000
+export function newCategory(size = DEFAULT_GRID): Category {
+  return { id: newId(), title: 'Новая категория', questions: gridValues(size).map(newQuestion) }
+}
+
+// Сколько вопросов давать новой категории: как в самой длинной строке раунда, а в пустом раунде — 10
+export function gridSizeOf(round: Round): number {
+  const counts = round.categories.map((c) => c.questions.length)
+  return counts.length > 0 ? Math.min(Math.max(...counts), MAX_QUESTIONS) : DEFAULT_GRID
+}
+
+// Привести категорию к сетке из size вопросов.
+// Не хватает — добавляем пустые вопросы с недостающими номиналами (100…size × 100).
+// Лишние — убираем сначала пустые, потом заполненные, начиная с самых дорогих.
+// Возвращает новую категорию и список убранных вопросов (чтобы предупредить и удалить их файлы).
+export function resizeCategory(category: Category, size: number): { category: Category; removed: Question[] } {
+  let questions = sortByValue(category.questions)
+
+  if (questions.length < size) {
+    const taken = new Set(questions.map((q) => q.value))
+    const free = gridValues(MAX_QUESTIONS).filter((v) => !taken.has(v))
+    let next = Math.max(0, ...questions.map((q) => q.value)) // на случай нестандартных номиналов
+    while (free.length < size - questions.length) free.push((next += 100))
+    questions = sortByValue([...questions, ...free.slice(0, size - questions.length).map(newQuestion)])
+  }
+
+  const removed: Question[] = []
+  const byValueDesc = (list: Question[]) => [...list].sort((a, b) => b.value - a.value)
+  for (const q of [...byValueDesc(questions.filter(isEmptyQuestion)), ...byValueDesc(questions)]) {
+    if (questions.length - removed.length <= size) break
+    if (!removed.includes(q)) removed.push(q)
+  }
+
+  return { category: { ...category, questions: questions.filter((q) => !removed.includes(q)) }, removed }
+}
+
+// Привести все категории раунда к одной сетке
+export function resizeRound(round: Round, size: number): { round: Round; removed: Question[] } {
+  const results = round.categories.map((c) => resizeCategory(c, size))
+  return {
+    round: { ...round, categories: results.map((r) => r.category) },
+    removed: results.flatMap((r) => r.removed),
+  }
 }
 
 // Изменить один раунд (по id)
@@ -108,6 +157,82 @@ export function moveTeam(game: Game, teamId: string, delta: number): Game {
   const teams = [...game.teams]
   ;[teams[index], teams[target]] = [teams[target], teams[index]]
   return { ...game, teams }
+}
+
+export function updateTeam(game: Game, teamId: string, change: (t: Team) => Team): Game {
+  return { ...game, teams: game.teams.map((t) => (t.id === teamId ? change(t) : t)) }
+}
+
+// ---- Участники ----
+
+// Добавить участников по именам (пустые строки пропускаем). teamId — сразу в эту команду.
+export function addPlayers(game: Game, names: string[], teamId?: string): Game {
+  const players: Player[] = names
+    .map((n) => n.trim())
+    .filter(Boolean)
+    .map((name) => ({ id: newId(), name, teamId }))
+  return { ...game, players: [...game.players, ...players] }
+}
+
+// Имена из вставленного текста: по одному на строку. Из Excel берём первый столбец.
+export function namesFromText(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.split('\t')[0].trim())
+    .filter(Boolean)
+}
+
+export function updatePlayer(game: Game, playerId: string, change: (p: Player) => Player): Game {
+  return { ...game, players: game.players.map((p) => (p.id === playerId ? change(p) : p)) }
+}
+
+export function removePlayer(game: Game, playerId: string): Game {
+  return { ...game, players: game.players.filter((p) => p.id !== playerId) }
+}
+
+// Перемешать список (честно: каждый порядок равновероятен)
+function shuffle<T>(items: T[], random: () => number): T[] {
+  const result = [...items]
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1))
+    ;[result[i], result[j]] = [result[j], result[i]]
+  }
+  return result
+}
+
+// Случайное распределение по командам.
+// Закреплённые (капитаны) остаются на месте. Остальные перемешиваются и идут:
+//   1) в команды с заданным размером — пока команда не заполнится;
+//   2) остальные — в команды без размера, каждый раз в ту, где сейчас меньше всего людей;
+//      если размер задан у всех команд, лишние люди тоже идут туда, где меньше всего.
+export function distributeRandomly(game: Game, random: () => number = Math.random): Game {
+  const teamIds = new Set(game.teams.map((t) => t.id))
+  const stays = (p: Player) => p.locked && p.teamId && teamIds.has(p.teamId)
+  const count = new Map(game.teams.map((t) => [t.id, game.players.filter((p) => stays(p) && p.teamId === t.id).length]))
+  const assigned = new Map<string, string>() // игрок → команда
+
+  const free = shuffle(game.players.filter((p) => !stays(p)), random)
+  for (const team of game.teams) {
+    while (team.targetSize && count.get(team.id)! < team.targetSize && free.length > 0) {
+      assigned.set(free.shift()!.id, team.id)
+      count.set(team.id, count.get(team.id)! + 1)
+    }
+  }
+
+  const open = game.teams.filter((t) => !t.targetSize)
+  const pool = open.length > 0 ? open : game.teams
+  for (const player of free) {
+    const smallest = pool.reduce((a, b) => (count.get(b.id)! < count.get(a.id)! ? b : a))
+    assigned.set(player.id, smallest.id)
+    count.set(smallest.id, count.get(smallest.id)! + 1)
+  }
+
+  return { ...game, players: game.players.map((p) => (assigned.has(p.id) ? { ...p, teamId: assigned.get(p.id) } : p)) }
+}
+
+// id всех файлов игры: в вопросах и фото участников
+export function allMediaIds(game: Game): string[] {
+  return [...allQuestions(game).flatMap(mediaIdsOf), ...game.players.flatMap((p) => (p.photo ? [p.photo.id] : []))]
 }
 
 // Копия игры с новым id и названием «… (копия)». Файлы общие: удаляются, только когда не нужны ни одной игре.

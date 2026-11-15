@@ -2,8 +2,12 @@ import { useState } from 'react'
 import QuestionEditor from '../components/QuestionEditor'
 import { useSavedGame } from '../useSavedGame'
 import {
+  GRID_SIZES,
+  gridSizeOf,
   isEmptyQuestion,
+  MAX_QUESTIONS,
   mediaIdsOf,
+  resizeRound,
   moveCategory,
   newCategory,
   newQuestion,
@@ -37,8 +41,33 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const question = category?.questions.find((q) => q.id === selectedId)
 
   function addCategory() {
-    change((g) => updateRound(g, round.id, (r) => ({ ...r, categories: [...r.categories, newCategory()] })))
+    const size = gridSizeOf(round) // столько же вопросов, сколько в остальных категориях; в пустой игре — 10
+    change((g) => updateRound(g, round.id, (r) => ({ ...r, categories: [...r.categories, newCategory(size)] })))
   }
+
+  // Готовая сетка: все категории раунда — по size вопросов
+  function applyGrid(size: number) {
+    const { removed } = resizeRound(round, size)
+    const filled = removed.filter((q) => !isEmptyQuestion(q))
+    if (filled.length > 0) {
+      const list = filled.map((q) => q.value).join(', ')
+      const ok = window.confirm(
+        `В сетке на ${size} не поместятся заполненные вопросы (${filled.length}: за ${list}). Удалить их? Это нельзя отменить.`,
+      )
+      if (!ok) return
+    }
+    dropMedia(...removed.flatMap(mediaIdsOf))
+    change((g) => updateRound(g, round.id, (r) => resizeRound(r, size).round))
+  }
+
+  // Какая сетка сейчас: если во всех категориях поровну вопросов — это число
+  const counts = new Set(round.categories.map((c) => c.questions.length))
+  const currentGrid = counts.size === 1 ? [...counts][0] : null
+
+  // Сколько колонок у ячеек в строке категории (одинаково для всех строк, чтобы номиналы стояли ровно).
+  // До 6 ячеек (с «+») — одна строка, больше — две строки, иначе 10 ячеек не влезут в ноутбук.
+  const cells = Math.max(1, ...round.categories.map((c) => c.questions.length + (c.questions.length < MAX_QUESTIONS ? 1 : 0)))
+  const columns = cells <= 6 ? cells : Math.ceil(cells / 2)
 
   function deleteCategory(c: Category) {
     const filled = c.questions.filter((q) => !isEmptyQuestion(q)).length
@@ -49,6 +78,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   }
 
   function addQuestion(c: Category) {
+    if (c.questions.length >= MAX_QUESTIONS) return
     const value = Math.max(0, ...c.questions.map((q) => q.value)) + 100
     const created = newQuestion(value)
     change((g) => updateCategory(g, c.id, (x) => ({ ...x, questions: [...x.questions, created] })))
@@ -115,16 +145,35 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
         />
       ) : (
         <>
-          <p className="text-muted">
-            Нажмите на ячейку, чтобы изменить вопрос: текст, слайды, картинку или музыку. Название категории меняется прямо
-            в строке.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-muted">
+              Нажмите на ячейку, чтобы изменить вопрос: текст, слайды, картинку или музыку. Название категории меняется
+              прямо в строке.
+            </p>
+            <div role="group" aria-label="Готовая сетка" className="flex items-center gap-2">
+              <span className="text-sm text-muted">Вопросов в категории:</span>
+              {GRID_SIZES.map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => applyGrid(size)}
+                  aria-pressed={currentGrid === size}
+                  aria-label={`Сетка на ${size} вопросов в каждой категории`}
+                  className={`h-11 min-w-11 rounded-lg px-3 font-display ${currentGrid === size ? 'bg-white text-black' : 'border border-line hover:bg-cell'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="flex flex-col gap-3">
             {round.categories.map((c, i) => (
               <CategoryRow
                 key={c.id}
                 category={c}
+                columns={columns}
+                twoRows={cells > 6}
                 isFirst={i === 0}
                 isLast={i === round.categories.length - 1}
                 onRename={(title) => change((g) => updateCategory(g, c.id, (x) => ({ ...x, title })))}
@@ -151,8 +200,10 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
 }
 
 // Строка категории: порядок, название, ячейки вопросов, «+ вопрос», удаление
-function CategoryRow({ category, isFirst, isLast, onRename, onMove, onDelete, onOpenQuestion, onAddQuestion }: {
+function CategoryRow({ category, columns, twoRows, isFirst, isLast, onRename, onMove, onDelete, onOpenQuestion, onAddQuestion }: {
   category: Category
+  columns: number // сколько ячеек в одном ряду
+  twoRows: boolean // ячейки идут в два ряда — делаем их пониже
   isFirst: boolean
   isLast: boolean
   onRename: (title: string) => void
@@ -162,9 +213,10 @@ function CategoryRow({ category, isFirst, isLast, onRename, onMove, onDelete, on
   onAddQuestion: () => void
 }) {
   const rowButton = 'h-11 min-w-11 rounded-lg border border-line px-3 text-sm hover:bg-cell disabled:opacity-40'
+  const cellHeight = twoRows ? 'min-h-16' : 'min-h-20'
 
   return (
-    <div className="flex flex-wrap items-center gap-2.5 rounded-xl border border-line p-3">
+    <div className="flex items-center gap-2.5 rounded-xl border border-line p-3">
       <div className="flex flex-col gap-1">
         <button type="button" onClick={() => onMove(-1)} disabled={isFirst} aria-label={`Поднять категорию «${category.title}» выше`} className={rowButton}>
           ↑
@@ -181,33 +233,37 @@ function CategoryRow({ category, isFirst, isLast, onRename, onMove, onDelete, on
           if (!category.title.trim()) onRename('Без названия')
         }}
         aria-label="Название категории"
-        className="h-20 w-52 rounded-xl border border-transparent bg-cell px-4 font-display text-lg text-white hover:border-line focus:border-white focus:outline-none"
+        className="h-20 w-48 shrink-0 rounded-xl border border-transparent bg-cell px-4 font-display text-lg text-white hover:border-line focus:border-white focus:outline-none"
       />
 
-      {sortByValue(category.questions).map((q) => {
-        const note = cellNote(q)
-        const empty = note === 'пусто'
-        return (
-          <button
-            key={q.id}
-            type="button"
-            onClick={() => onOpenQuestion(q.id)}
-            className={`flex min-h-20 w-28 flex-col items-center justify-center rounded-xl border-2 font-display text-3xl transition hover:bg-white hover:text-black ${empty ? 'border-dashed border-muted text-muted' : 'border-white'}`}
-          >
-            {q.value}
-            {note && <span className="font-sans text-sm font-normal">{note}</span>}
-          </button>
-        )
-      })}
+      <div className="grid flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
+        {sortByValue(category.questions).map((q) => {
+          const note = cellNote(q)
+          const empty = note === 'пусто'
+          return (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => onOpenQuestion(q.id)}
+              className={`@container flex ${cellHeight} flex-col items-center justify-center rounded-xl border-2 font-display transition hover:bg-white hover:text-black ${empty ? 'border-dashed border-muted text-muted' : 'border-white'}`}
+            >
+              <span className="text-[min(1.875rem,20cqw)]">{q.value}</span>
+              {note && <span className="font-sans text-xs font-normal">{note}</span>}
+            </button>
+          )
+        })}
 
-      <button
-        type="button"
-        onClick={onAddQuestion}
-        aria-label={`Добавить вопрос в категорию «${category.title}»`}
-        className="flex min-h-20 w-20 items-center justify-center rounded-xl border-2 border-dashed border-line text-3xl text-muted hover:border-white hover:text-white"
-      >
-        +
-      </button>
+        {category.questions.length < MAX_QUESTIONS && (
+          <button
+            type="button"
+            onClick={onAddQuestion}
+            aria-label={`Добавить вопрос в категорию «${category.title}»`}
+            className={`flex ${cellHeight} items-center justify-center rounded-xl border-2 border-dashed border-line text-3xl text-muted hover:border-white hover:text-white`}
+          >
+            +
+          </button>
+        )}
+      </div>
 
       <button
         type="button"

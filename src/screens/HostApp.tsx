@@ -247,9 +247,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           <a href="#/" className="text-sm text-muted hover:text-white">
             ← Мои игры
           </a>
-          <a href={`#/teams/${encodeURIComponent(game.id)}`} className="text-sm text-muted hover:text-white">
-            Команды
-          </a>
           <span className="font-display text-xl">ПУЛЬТ</span>
           <span className="text-muted">
             {game.title} · {round.title} · сыграно {played} из {allQuestions.length}
@@ -280,6 +277,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           >
             Отменить · Ctrl+Z
           </button>
+          <a
+            href={`#/teams/${encodeURIComponent(game.id)}`}
+            className="flex h-11 items-center rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            Команды и игроки
+          </a>
           <button
             type="button"
             onClick={openScreen}

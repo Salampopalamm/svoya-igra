@@ -17,7 +17,7 @@ export default function Board({ round, interactive = true, onCellClick }: Props)
   return (
     <div
       className="grid gap-2.5"
-      style={{ gridTemplateColumns: `minmax(220px, 1.6fr) repeat(${values.length}, 1fr)` }}
+      style={{ gridTemplateColumns: `minmax(180px, 1.6fr) repeat(${values.length}, minmax(0, 1fr))` }}
     >
       {round.categories.map((category) => (
         <Fragment key={category.id}>
@@ -33,12 +33,15 @@ export default function Board({ round, interactive = true, onCellClick }: Props)
               return <div key={value} className="rounded-xl border-2 border-dashed border-line" />
             }
 
-            const cellClass = 'flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display text-3xl'
+            // @container + cqw: номинал уменьшается под ширину ячейки — «1000» помещается и при 10 колонках
+            const cellClass =
+              '@container flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display'
+            const label = <span className="text-[min(1.875rem,20cqw)]">{value}</span>
 
             if (!interactive) {
               return (
                 <div key={question.id} className={cellClass}>
-                  {value}
+                  {label}
                 </div>
               )
             }
@@ -50,7 +53,7 @@ export default function Board({ round, interactive = true, onCellClick }: Props)
                 onClick={() => onCellClick?.(category.id, question.id)}
                 className={`${cellClass} transition hover:bg-white hover:text-black`}
               >
-                {value}
+                {label}
               </button>
             )
           })}
