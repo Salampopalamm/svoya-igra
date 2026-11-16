@@ -17,7 +17,7 @@ import {
   type Message,
 } from '../live'
 import { VideoContext, type VideoCommand } from '../videoControl'
-import { playSound, preloadSounds } from '../sounds'
+import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
 import { mergeProgress, nextTeamId, roundById } from '../game'
 import type { Game, Theme } from '../types'
@@ -135,9 +135,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     }
   }, [])
 
-  // Свои сигналы «верно / неверно» загружаем заранее, чтобы звучали без задержки
-  useEffect(() => preloadSounds(initialGame.theme.sounds), [initialGame])
-
   // При каждом изменении: сохранить и отправить в зал
   useEffect(() => {
     liveRef.current = live
@@ -204,16 +201,15 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   function handleCorrect(teamId: string) {
     if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
-    void playSound('correct', game.theme.sounds)
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
     if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
-    void playSound('wrong', game.theme.sounds)
   }
 
+  // Сигнал «время вышло» можно выключить
   function toggleSounds() {
     changeTheme({ sounds: { ...game.theme.sounds, enabled: !game.theme.sounds.enabled } })
   }
@@ -446,7 +442,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             aria-pressed={game.theme.sounds.enabled}
             className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
           >
-            {game.theme.sounds.enabled ? 'Сигналы: вкл' : 'Сигналы: выкл'}
+            {game.theme.sounds.enabled ? 'Звук таймера: вкл' : 'Звук таймера: выкл'}
           </button>
           <button
             type="button"
@@ -514,7 +510,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             onToggleTimer={toggleTimer}
             onResetTimer={resetTimer}
             onSetTimerLength={setTimerLength}
-            onTimeUp={() => void playSound('time-up', game.theme.sounds)}
+            onTimeUp={() => {
+              if (game.theme.sounds.enabled) playTimeUp()
+            }}
           />
         </VideoContext.Provider>
       ) : (

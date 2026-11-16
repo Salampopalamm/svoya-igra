@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import QuestionEditor from '../components/QuestionEditor'
-import SoundsEditor from '../components/SoundsEditor'
 import { useSavedGame } from '../useSavedGame'
 import {
   GRID_SIZES,
@@ -254,12 +253,6 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           >
             + Добавить категорию
           </button>
-
-          <SoundsEditor
-            sounds={game.theme.sounds}
-            onChange={(sounds) => change((g) => ({ ...g, theme: { ...g.theme, sounds } }))}
-            onMediaRemoved={(id) => dropMedia(id)}
-          />
         </>
       )}
     </div>

@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from 'react'
 import PlayerAvatar from '../components/PlayerAvatar'
 import PlayersList from '../components/PlayersList'
+import TeamIcon from '../components/TeamIcon'
+import { addMediaFile, deleteMediaIfUnused } from '../db'
 import {
   addPlayers,
   addTeam,
@@ -9,10 +11,11 @@ import {
   moveTeam,
   removeTeam,
   renameTeam,
+  TEAM_EMOJI,
   updatePlayer,
   updateTeam,
 } from '../game'
-import type { Game, Player, Team } from '../types'
+import type { Game, MediaRef, Player, Team } from '../types'
 import { useSavedGame } from '../useSavedGame'
 
 type Change = (update: (g: Game) => Game) => void
@@ -109,6 +112,7 @@ export default function TeamsApp({ initialGame }: { initialGame: Game }) {
                 change={change}
                 onRemove={() => remove(team)}
                 onDropPlayer={(playerId) => moveTo(playerId, team.id)}
+                onMediaRemoved={(id) => dropMedia(id)}
               />
             ))}
           </div>
@@ -130,8 +134,78 @@ export default function TeamsApp({ initialGame }: { initialGame: Game }) {
   )
 }
 
-// Карточка команды: название, размер, игроки, «+ игрок», порядок, удалить
-function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer }: {
+// Выбор значка: эмодзи из набора, своя картинка или «без значка». Значок у команды один.
+function IconPicker({ team, onPick }: {
+  team: Team
+  onPick: (icon: { emoji?: string; logo?: MediaRef }) => void
+}) {
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function upload(file: File | undefined) {
+    if (!file) return
+    setError(null)
+    setBusy(true)
+    try {
+      const ref = await addMediaFile(file)
+      if (ref.type !== 'image' && ref.type !== 'gif') {
+        await deleteMediaIfUnused(ref.id) // не картинка — сразу убираем из хранилища
+        throw new Error('Для значка нужна картинка: jpg, png или gif.')
+      }
+      onPick({ logo: ref })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Не получилось сохранить картинку.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-line bg-cell p-2.5">
+      <div role="group" aria-label="Эмодзи для значка" className="grid grid-cols-6 gap-1">
+        {TEAM_EMOJI.map((emoji) => (
+          <button
+            key={emoji}
+            type="button"
+            onClick={() => onPick({ emoji })}
+            aria-pressed={!team.logo && team.emoji === emoji}
+            className={`flex h-11 items-center justify-center rounded-lg text-2xl ${!team.logo && team.emoji === emoji ? 'bg-white' : 'hover:bg-bg'}`}
+          >
+            {emoji}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <label className={`${ghostButton} flex cursor-pointer items-center focus-within:border-white`}>
+          {busy ? 'Сохраняю…' : team.logo ? 'Заменить картинку' : 'Своя картинка…'}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={busy}
+            className="sr-only"
+            onChange={(e) => {
+              void upload(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+        </label>
+        {(team.emoji || team.logo) && (
+          <button type="button" onClick={() => onPick({})} className={ghostButton}>
+            Без значка
+          </button>
+        )}
+      </div>
+      {error && (
+        <p role="alert" className="rounded-lg border border-white px-3 py-2 text-sm">
+          {error}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// Карточка команды: название, значок, размер, игроки, «+ игрок», порядок, удалить
+function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer, onMediaRemoved }: {
   team: Team
   index: number
   count: number
@@ -139,7 +213,9 @@ function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer 
   change: Change
   onRemove: () => void
   onDropPlayer: (playerId: string) => void
+  onMediaRemoved: (mediaId: string) => void // картинку-значок убрали — её можно удалить из хранилища
 }) {
+  const [picking, setPicking] = useState(false) // открыт выбор значка
   const [adding, setAdding] = useState(false) // открыто поле «+ игрок»
   const [newName, setNewName] = useState('')
   const [sizeText, setSizeText] = useState(team.targetSize ? String(team.targetSize) : '')
@@ -160,6 +236,16 @@ function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer 
         >
           {index === 9 ? 0 : index + 1}
         </span>
+        <button
+          type="button"
+          onClick={() => setPicking((p) => !p)}
+          aria-expanded={picking}
+          aria-label={`Значок команды «${team.name}»`}
+          title="Значок команды"
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-xs text-muted ${team.emoji || team.logo ? 'hover:bg-cell' : 'border border-dashed border-muted hover:bg-cell'}`}
+        >
+          {team.emoji || team.logo ? <TeamIcon team={team} size={36} /> : 'значок'}
+        </button>
         <label className="flex flex-1 flex-col gap-1 text-xs text-muted">
           Название
           <input
@@ -175,6 +261,18 @@ function TeamCard({ team, index, count, members, change, onRemove, onDropPlayer 
           />
         </label>
       </div>
+
+      {picking && (
+        <IconPicker
+          team={team}
+          onPick={(icon) => {
+            const oldLogo = team.logo
+            change((g) => updateTeam(g, team.id, (t) => ({ ...t, emoji: icon.emoji, logo: icon.logo })))
+            if (oldLogo && oldLogo.id !== icon.logo?.id) onMediaRemoved(oldLogo.id)
+            setPicking(false)
+          }}
+        />
+      )}
 
       <label className="flex items-center justify-between gap-2 text-sm text-muted">
         Размер (пусто — поровну)

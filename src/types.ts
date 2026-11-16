@@ -36,6 +36,8 @@ export type Team = {
   name: string
   score: number
   targetSize?: number // желаемый размер; пусто = примерно поровну
+  emoji?: string // значок команды из набора эмодзи
+  logo?: MediaRef // своя картинка-значок; если есть, показывается вместо эмодзи
 }
 
 export type TreeNode = {

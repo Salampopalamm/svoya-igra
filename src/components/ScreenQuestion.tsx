@@ -1,14 +1,15 @@
 import { formatTime, type TimerState } from '../live'
-import type { Question } from '../types'
+import type { Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
 import { MediaView, SlideView } from './MediaView'
+import TeamIcon from './TeamIcon'
 
 type Props = {
   categoryTitle: string
   question: Question
   slideIndex: number // какой слайд показывать
   showAnswer: boolean
-  answeringTeamName?: string
+  answeringTeam?: Team
   stealing: boolean // основная команда ошиблась — идёт перехват
   canSteal: boolean // перехватить ещё есть кому (не все ошиблись)
   timer: TimerState | null
@@ -39,18 +40,21 @@ export default function ScreenQuestion({
   question,
   slideIndex,
   showAnswer,
-  answeringTeamName,
+  answeringTeam,
   stealing,
   canSteal,
   timer,
 }: Props) {
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
-  // Плашка справа: кто отвечает, или приглашение перехватить вопрос
-  const badge = answeringTeamName
-    ? `${stealing ? 'Перехват' : 'Отвечает'}: ${answeringTeamName}`
-    : stealing && canSteal && !showAnswer
-      ? 'Перехват! Кто ответит?'
-      : null
+  // Плашка справа: кто отвечает (со значком команды), или приглашение перехватить вопрос
+  const badge = answeringTeam ? (
+    <>
+      <TeamIcon team={answeringTeam} size={36} />
+      {stealing ? 'Перехват' : 'Отвечает'}: {answeringTeam.name}
+    </>
+  ) : stealing && canSteal && !showAnswer ? (
+    'Перехват! Кто ответит?'
+  ) : null
 
   return (
     <div className="flex flex-1 flex-col justify-center gap-10">
@@ -60,7 +64,9 @@ export default function ScreenQuestion({
         </span>
         <div className="flex items-start gap-6">
           {badge && (
-            <span className="rounded-xl border-[3px] border-white bg-cell px-5 py-3 text-2xl font-semibold">{badge}</span>
+            <span className="flex items-center gap-3 rounded-xl border-[3px] border-white bg-cell px-5 py-3 text-2xl font-semibold">
+              {badge}
+            </span>
           )}
           {timer && !showAnswer && <HallTimer timer={timer} />}
         </div>

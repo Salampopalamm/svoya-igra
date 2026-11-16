@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Player, Team } from '../types'
 import PlayerAvatar from './PlayerAvatar'
+import TeamIcon from './TeamIcon'
 
 type Props = {
   teams: Team[]
@@ -59,6 +60,7 @@ export default function Scoreboard({
               ) : (
                 <span className={numberClass}>{number}</span>
               )}
+              <TeamIcon team={team} size={36} />
               <span className="flex-1 text-lg font-semibold">
                 {team.name}
                 {active && activeLabel && (

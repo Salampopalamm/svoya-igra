@@ -3,6 +3,7 @@ import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
 import { MediaView, SlideView } from './MediaView'
+import TeamIcon from './TeamIcon'
 
 type Props = {
   categoryTitle: string
@@ -282,6 +283,7 @@ export default function QuestionView({
                   >
                     {i === 9 ? 0 : i + 1}
                   </span>
+                  <TeamIcon team={team} size={28} />
                   {team.name}
                   {label && (
                     <span

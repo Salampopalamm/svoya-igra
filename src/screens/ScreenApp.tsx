@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import Board from '../components/Board'
 import ScreenQuestion from '../components/ScreenQuestion'
 import Scoreboard from '../components/Scoreboard'
+import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
@@ -105,7 +106,7 @@ export default function ScreenApp() {
           question={question}
           slideIndex={slideIndex}
           showAnswer={showAnswer}
-          answeringTeamName={answeringTeam?.name}
+          answeringTeam={answeringTeam}
           stealing={stealing}
           canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
           timer={live.timer ?? null}
@@ -124,7 +125,8 @@ export default function ScreenApp() {
         <span className="font-display text-2xl">{game.title.toUpperCase()}</span>
         <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
         {!questionOpen && turnTeam ? (
-          <span className="rounded-xl border-[3px] border-white bg-cell px-5 py-2 text-xl font-semibold">
+          <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-white bg-cell px-5 py-2 text-xl font-semibold">
+            <TeamIcon team={turnTeam} size={28} />
             Ход: {turnTeam.name}
           </span>
         ) : (

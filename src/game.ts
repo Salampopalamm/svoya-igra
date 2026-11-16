@@ -151,6 +151,13 @@ export function isEmptyQuestion(question: Question): boolean {
 
 export const MAX_TEAMS = 10 // 1–10: на пульте команды выбираются клавишами 1–9 и 0
 
+// Значки команд на выбор: крупные, узнаваемые издалека, без людей и флагов
+export const TEAM_EMOJI = [
+  '🦊', '🐻', '🐼', '🦁', '🐯', '🐸', '🐙', '🦉', '🐝', '🦄',
+  '🚀', '⚡', '🔥', '🌟', '🌈', '❄️', '🌵', '🍀', '🍕', '🍩',
+  '🍉', '☕', '🎸', '🎯', '🎲', '🏆', '💎', '👑', '🎩', '🧠',
+]
+
 // Добавить команду в конец: «Команда N», где N — первый свободный номер
 export function addTeam(game: Game): Game {
   if (game.teams.length >= MAX_TEAMS) return game
@@ -270,6 +277,7 @@ export function allMediaIds(game: Game): string[] {
   return [
     ...allQuestions(game).flatMap(mediaIdsOf),
     ...game.players.flatMap((p) => (p.photo ? [p.photo.id] : [])),
+    ...game.teams.flatMap((t) => (t.logo ? [t.logo.id] : [])),
     ...themeMedia,
   ]
 }

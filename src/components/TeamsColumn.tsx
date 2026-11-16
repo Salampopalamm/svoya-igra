@@ -1,5 +1,6 @@
 import type { Player, Team } from '../types'
 import PlayerAvatar from './PlayerAvatar'
+import TeamIcon from './TeamIcon'
 
 type Props = {
   teams: Team[]
@@ -26,8 +27,9 @@ export default function TeamsColumn({ teams, players, activeTeamId, activeLabel,
             key={team.id}
             className={`flex flex-col gap-2.5 rounded-xl px-4 py-3 ${active ? 'border-[3px] border-white bg-cell' : 'border border-line'} ${out ? 'opacity-40' : ''}`}
           >
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-lg font-semibold">
+            <div className="flex items-center justify-between gap-3">
+              <TeamIcon team={team} size={36} />
+              <span className="flex-1 text-lg font-semibold">
                 {team.name}
                 {active && activeLabel && (
                   <span className="ml-2 rounded bg-white px-2 py-0.5 align-middle text-xs text-black">{activeLabel}</span>
