@@ -5,6 +5,7 @@ import HostApp from './screens/HostApp'
 import LibraryApp from './screens/LibraryApp'
 import ScreenApp from './screens/ScreenApp'
 import TeamsApp from './screens/TeamsApp'
+import WizardApp from './screens/WizardApp'
 import type { Game } from './types'
 
 // Адреса внутри приложения (часть после #):
@@ -13,7 +14,7 @@ import type { Game } from './types'
 //   #/edit/<id>     — редактор игры <id>
 //   #/teams/<id>    — команды игры <id>
 //   #/screen        — экран зала (открывается кнопкой на пульте)
-//   #/new           — мастер «Быстрая игра» (следующий шаг)
+//   #/new           — мастер «Быстрая игра»
 export default function App() {
   const [hash, setHash] = useState(window.location.hash)
 
@@ -53,7 +54,7 @@ export default function App() {
     )
   }
 
-  if (hash === '#/new') return <Placeholder text="Мастер «Быстрая игра» появится на следующем шаге." />
+  if (hash === '#/new') return <WizardApp />
 
   return <LibraryApp />
 }

@@ -71,6 +71,13 @@ export function saveGame(game: Game) {
   return db.games.put({ ...game, updatedAt: Date.now() })
 }
 
+// Поменять в сохранённой игре только часть (например, оформление), не трогая остальное.
+// Пульт так запоминает вид команд, не записывая в хранилище счёт текущей партии.
+export async function updateStoredGame(id: string, change: (g: Game) => Game) {
+  const game = await db.games.get(id)
+  if (game) await db.games.put(change(game))
+}
+
 export function deleteGame(id: string) {
   return db.games.delete(id)
 }

@@ -63,6 +63,31 @@ export function resizeRound(round: Round, size: number): { round: Round; removed
   }
 }
 
+// ---- Раунды ----
+
+// Раунд по id; если такого нет (например, удалили) — первый
+export function roundById(game: Game, roundId: string | null | undefined): Round {
+  return game.rounds.find((r) => r.id === roundId) ?? game.rounds[0]
+}
+
+// Новый раунд в конце: «Раунд N» с одной категорией — сетка как в последнем раунде
+export function addRound(game: Game): { game: Game; round: Round } {
+  const last = game.rounds.at(-1)
+  const round: Round = {
+    id: newId(),
+    title: `Раунд ${game.rounds.length + 1}`,
+    kind: 'standard',
+    categories: [newCategory(last ? gridSizeOf(last) : DEFAULT_GRID)],
+  }
+  return { game: { ...game, rounds: [...game.rounds, round] }, round }
+}
+
+// Убрать раунд; последний оставшийся убрать нельзя
+export function removeRound(game: Game, roundId: string): Game {
+  if (game.rounds.length <= 1) return game
+  return { ...game, rounds: game.rounds.filter((r) => r.id !== roundId) }
+}
+
 // Изменить один раунд (по id)
 export function updateRound(game: Game, roundId: string, change: (r: Round) => Round): Game {
   return { ...game, rounds: game.rounds.map((r) => (r.id === roundId ? change(r) : r)) }
@@ -157,6 +182,14 @@ export function moveTeam(game: Game, teamId: string, delta: number): Game {
   const teams = [...game.teams]
   ;[teams[index], teams[target]] = [teams[target], teams[index]]
   return { ...game, teams }
+}
+
+// Ход по кругу: следующая команда после этой (после последней — снова первая).
+// Если команды с таким id уже нет — ход у первой.
+export function nextTeamId(game: Game, teamId: string | null): string | null {
+  const index = game.teams.findIndex((t) => t.id === teamId)
+  if (index < 0) return game.teams[0]?.id ?? null
+  return game.teams[(index + 1) % game.teams.length].id
 }
 
 export function updateTeam(game: Game, teamId: string, change: (t: Team) => Team): Game {

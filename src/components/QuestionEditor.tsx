@@ -11,7 +11,6 @@ type Props = {
   onMediaRemoved: (mediaId: string) => void // файл убрали из вопроса — его можно удалить из хранилища
   onDelete: () => void
   onClose: () => void
-  otherValues: number[] // стоимости других вопросов этой категории — чтобы предупредить о повторе
 }
 
 // Редактор вопроса: стоимость, слайды (текст и файл на каждом) и ответ. Сохраняется сам после каждой правки.
@@ -22,7 +21,6 @@ export default function QuestionEditor({
   onMediaRemoved,
   onDelete,
   onClose,
-  otherValues,
 }: Props) {
   const { slides } = question
   const [valueText, setValueText] = useState(String(question.value)) // что набрано в поле «Стоимость»
@@ -83,12 +81,6 @@ export default function QuestionEditor({
           </button>
         </div>
       </div>
-
-      {otherValues.includes(question.value) && (
-        <p role="alert" className="rounded-lg border border-white px-3 py-2 text-sm">
-          В категории уже есть вопрос за {question.value}. На табло будет виден только один из них — поменяйте стоимость.
-        </p>
-      )}
 
       <p className="text-sm text-muted">
         Вопрос показывается слайдами по порядку. Обычно на первом — задание, на втором — картинка или музыка. Ведущий

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { deleteGame, deleteMediaIfUnused, listGames, saveGame } from '../db'
 import { allMediaIds, copyGame } from '../game'
+import { exportFileName, exportGame, importGame } from '../gameFile'
 import type { Game } from '../types'
 
 // Стартовый экран «Мои игры»: создать игру, открыть файл, список своих игр.
@@ -27,6 +28,43 @@ export default function LibraryApp() {
     reload()
   }
 
+  const [busy, setBusy] = useState<string | null>(null) // что сейчас делается: «Открываю…», «Собираю файл…»
+  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
+
+  // Открыть файл игры (.zip): игра со всеми картинками и музыкой появится в списке
+  async function openFile(file: File | undefined) {
+    if (!file) return
+    setMessage(null)
+    setBusy(`Открываю «${file.name}»…`)
+    try {
+      const game = await importGame(file)
+      setMessage({ text: `Игра «${game.title}» добавлена.` })
+      reload()
+    } catch (e) {
+      setMessage({ text: e instanceof Error ? e.message : 'Не получилось открыть файл.', error: true })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  // Отправить файлом: скачать .zip со всей игрой, чтобы открыть его на другом ноутбуке
+  async function sendFile(game: Game) {
+    setMessage(null)
+    setBusy(`Собираю файл «${game.title}»…`)
+    try {
+      const url = URL.createObjectURL(await exportGame(game))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = exportFileName(game)
+      link.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+    } catch {
+      setMessage({ text: 'Не получилось собрать файл игры.', error: true })
+    } finally {
+      setBusy(null)
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col gap-8 bg-bg px-12 py-10 text-white">
       <div className="flex flex-col gap-2">
@@ -45,11 +83,30 @@ export default function LibraryApp() {
           <span className="text-xl font-bold">Из шаблона</span>
           <span className="text-sm text-muted">Скоро</span>
         </div>
-        <div className="flex flex-col gap-2 rounded-2xl border border-line bg-cell p-6 opacity-60">
+        <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-line bg-cell p-6 hover:border-white focus-within:border-white">
           <span className="text-xl font-bold">Открыть файл игры</span>
-          <span className="text-sm text-muted">Скоро</span>
-        </div>
+          <span className="text-sm text-muted">Файл .zip, который сохранили кнопкой «Отправить файлом», — со всеми картинками и музыкой.</span>
+          <input
+            type="file"
+            accept=".zip,application/zip"
+            disabled={!!busy}
+            className="sr-only"
+            onChange={(e) => {
+              void openFile(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+        </label>
       </div>
+
+      {(busy || message) && (
+        <p
+          role={message?.error ? 'alert' : 'status'}
+          className={`rounded-lg px-4 py-3 text-sm ${message?.error ? 'border border-white' : 'bg-cell'}`}
+        >
+          {busy ?? message?.text}
+        </p>
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-xs font-semibold tracking-widest text-muted">
@@ -97,6 +154,14 @@ export default function LibraryApp() {
               </a>
               <button
                 type="button"
+                onClick={() => sendFile(game)}
+                disabled={!!busy}
+                className="h-11 rounded-lg border border-line px-4 hover:bg-cell disabled:opacity-40"
+              >
+                Отправить файлом
+              </button>
+              <button
+                type="button"
                 onClick={() => duplicate(game)}
                 className="h-11 rounded-lg border border-line px-4 hover:bg-cell"
               >
@@ -114,7 +179,8 @@ export default function LibraryApp() {
         })}
 
         <p className="text-sm text-muted">
-          Игры хранятся в этом браузере. Позже появится «Отправить файлом» — чтобы передать игру на другой ноутбук.
+          Игры хранятся в этом браузере. Чтобы перенести игру на другой ноутбук, нажмите «Отправить файлом» и откройте
+          этот файл там.
         </p>
       </section>
     </div>

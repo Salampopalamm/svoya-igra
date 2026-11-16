@@ -7,11 +7,27 @@ type Props = {
   slideIndex: number // какой слайд показывать
   showAnswer: boolean
   answeringTeamName?: string
+  stealing: boolean // основная команда ошиблась — идёт перехват
+  canSteal: boolean // перехватить ещё есть кому (не все ошиблись)
 }
 
 // Вопрос на экране зала: текущий слайд крупно, ответ — только когда ведущий его открыл.
-export default function ScreenQuestion({ categoryTitle, question, slideIndex, showAnswer, answeringTeamName }: Props) {
+export default function ScreenQuestion({
+  categoryTitle,
+  question,
+  slideIndex,
+  showAnswer,
+  answeringTeamName,
+  stealing,
+  canSteal,
+}: Props) {
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
+  // Плашка справа: кто отвечает, или приглашение перехватить вопрос
+  const badge = answeringTeamName
+    ? `${stealing ? 'Перехват' : 'Отвечает'}: ${answeringTeamName}`
+    : stealing && canSteal && !showAnswer
+      ? 'Перехват! Кто ответит?'
+      : null
 
   return (
     <div className="flex flex-1 flex-col justify-center gap-10">
@@ -19,10 +35,8 @@ export default function ScreenQuestion({ categoryTitle, question, slideIndex, sh
         <span className="font-display text-3xl">
           {categoryTitle.toUpperCase()} · <span className="rounded-lg bg-white px-4 py-1 text-black">{question.value}</span>
         </span>
-        {answeringTeamName && (
-          <span className="rounded-xl border-[3px] border-white bg-cell px-5 py-3 text-2xl font-semibold">
-            Отвечает: {answeringTeamName}
-          </span>
+        {badge && (
+          <span className="rounded-xl border-[3px] border-white bg-cell px-5 py-3 text-2xl font-semibold">{badge}</span>
         )}
       </div>
       <SlideView

@@ -7,10 +7,13 @@ export type Current = { categoryId: string; questionId: string } | null
 
 export type LiveState = {
   game: Game
+  roundId: string | null // какой раунд сейчас на табло (null — первый)
   current: Current // открытый вопрос (null — табло)
   slideIndex: number // какой слайд открытого вопроса сейчас в зале (с нуля)
   showAnswer: boolean // показан ли ответ в зале
   answeringTeamId: string | null // какая команда сейчас отвечает (подсветка)
+  turnTeamId: string | null // чей ход: команда выбирает ячейку и отвечает первой; после вопроса ход идёт по кругу
+  triedTeamIds: string[] // кто уже ошибся на открытом вопросе — им перехватывать нельзя
   screenHidden: boolean // экран зала скрыт заставкой
 }
 

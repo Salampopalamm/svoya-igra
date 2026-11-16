@@ -13,6 +13,9 @@ import {
   newQuestion,
   removeCategory,
   removeQuestion,
+  removeRound,
+  addRound,
+  roundById,
   sortByValue,
   updateCategory,
   updateQuestion,
@@ -35,8 +38,24 @@ function cellNote(question: Question): string | null {
 export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const { game, change, saved, dropMedia } = useSavedGame(initialGame)
   const [selectedId, setSelectedId] = useState<string | null>(null) // какой вопрос открыт
+  const [roundId, setRoundId] = useState<string | null>(initialGame.rounds[0]?.id ?? null) // какой раунд открыт
 
-  const round = game.rounds[0]
+  const round = roundById(game, roundId)
+
+  function newRound() {
+    const { game: next, round: created } = addRound(game)
+    change(() => next)
+    setRoundId(created.id)
+  }
+
+  function deleteRound() {
+    const filled = round.categories.flatMap((c) => c.questions).filter((q) => !isEmptyQuestion(q)).length
+    const warning = filled > 0 ? ` В нём ${filled} заполненных вопросов.` : ''
+    if (!window.confirm(`Удалить «${round.title}»?${warning} Это нельзя отменить.`)) return
+    dropMedia(...round.categories.flatMap((c) => c.questions).flatMap(mediaIdsOf))
+    change((g) => removeRound(g, round.id))
+    setRoundId(null) // откроется первый раунд
+  }
   const category = round.categories.find((c) => c.questions.some((q) => q.id === selectedId))
   const question = category?.questions.find((q) => q.id === selectedId)
 
@@ -140,11 +159,52 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           onChange={(update) => change((g) => updateQuestion(g, question.id, update))}
           onMediaRemoved={(id) => dropMedia(id)}
           onDelete={() => deleteQuestion(question)}
-          otherValues={category.questions.filter((q) => q.id !== question.id).map((q) => q.value)}
           onClose={() => setSelectedId(null)}
         />
       ) : (
         <>
+          <div className="flex flex-wrap items-center gap-2 border-b border-line pb-4">
+            <div role="tablist" aria-label="Раунды" className="flex flex-wrap gap-1.5">
+              {game.rounds.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={r.id === round.id}
+                  onClick={() => setRoundId(r.id)}
+                  className={`h-11 rounded-lg px-4 text-sm ${r.id === round.id ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+                >
+                  {r.title}
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={newRound} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
+              + Раунд
+            </button>
+            <label className="ml-auto flex items-center gap-2 text-sm text-muted">
+              Название раунда
+              <input
+                value={round.title}
+                onChange={(e) => {
+                  const title = e.target.value
+                  change((g) => updateRound(g, round.id, (r) => ({ ...r, title })))
+                }}
+                onBlur={() => {
+                  if (!round.title.trim()) change((g) => updateRound(g, round.id, (r) => ({ ...r, title: 'Раунд' })))
+                }}
+                className="h-11 w-48 rounded-lg border border-line bg-bg px-3 text-white focus:border-white focus:outline-none"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={deleteRound}
+              disabled={game.rounds.length <= 1}
+              className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+            >
+              Удалить раунд
+            </button>
+          </div>
+
           <div className="flex flex-wrap items-center justify-between gap-4">
             <p className="text-muted">
               Нажмите на ячейку, чтобы изменить вопрос: текст, слайды, картинку или музыку. Название категории меняется
@@ -183,7 +243,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                 onAddQuestion={() => addQuestion(c)}
               />
             ))}
-            {round.categories.length === 0 && <p className="text-muted">В игре пока нет ни одной категории.</p>}
+            {round.categories.length === 0 && <p className="text-muted">В этом раунде пока нет ни одной категории.</p>}
           </div>
 
           <button

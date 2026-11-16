@@ -4,12 +4,23 @@ import PreviewView from '../components/PreviewView'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import { CHANNEL, clearState, loadState, saveState, type Current, type LiveState, type Message } from '../live'
-import { mergeProgress } from '../game'
-import type { Game } from '../types'
+import { updateStoredGame } from '../db'
+import { mergeProgress, nextTeamId, roundById } from '../game'
+import type { Game, Theme } from '../types'
 
 // Свежая партия: игра из хранилища, всё по нулям
 function freshState(game: Game): LiveState {
-  return { game, current: null, slideIndex: 0, showAnswer: false, answeringTeamId: null, screenHidden: false }
+  return {
+    game,
+    roundId: game.rounds[0]?.id ?? null,
+    current: null,
+    slideIndex: 0,
+    showAnswer: false,
+    answeringTeamId: null,
+    turnTeamId: game.teams[0]?.id ?? null,
+    triedTeamIds: [],
+    screenHidden: false,
+  }
 }
 
 const HISTORY_LIMIT = 50
@@ -47,8 +58,17 @@ function withTeamScore(s: LiveState, teamId: string, change: (score: number) => 
   }
 }
 
+// Закрыть вопрос: ячейка сыграна, ход переходит к следующей команде по кругу
 function withClosed(s: LiveState): LiveState {
-  return { ...withPlayed(s, s.current), current: null, slideIndex: 0, showAnswer: false, answeringTeamId: null }
+  return {
+    ...withPlayed(s, s.current),
+    current: null,
+    slideIndex: 0,
+    showAnswer: false,
+    answeringTeamId: null,
+    triedTeamIds: [],
+    turnTeamId: nextTeamId(s.game, s.turnTeamId),
+  }
 }
 
 // Пульт ведущего: управляет игрой и передаёт состояние экрану зала.
@@ -59,9 +79,16 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     const saved = loadState()
     if (saved?.game?.id !== initialGame.id) return freshState(initialGame)
     const game = mergeProgress(initialGame, saved.game)
-    // Отвечающую команду могли удалить на экране «Команды» — тогда снимаем выбор
-    const answering = game.teams.some((t) => t.id === saved.answeringTeamId) ? saved.answeringTeamId : null
-    return { ...freshState(initialGame), ...saved, game, answeringTeamId: answering ?? null }
+    // Команды могли удалить на экране «Команды» — тогда снимаем выбор, а ход отдаём первой
+    const exists = (id: string | null | undefined): id is string => game.teams.some((t) => t.id === id)
+    return {
+      ...freshState(initialGame),
+      ...saved,
+      game,
+      answeringTeamId: exists(saved.answeringTeamId) ? saved.answeringTeamId : null,
+      turnTeamId: exists(saved.turnTeamId) ? saved.turnTeamId : (game.teams[0]?.id ?? null),
+      triedTeamIds: (saved.triedTeamIds ?? []).filter(exists),
+    }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
@@ -70,8 +97,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
 
-  const { game, current, slideIndex, showAnswer, answeringTeamId, screenHidden } = live
-  const round = game.rounds[0]
+  const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
+  const round = roundById(game, live.roundId)
 
   // Канал связи: экран зала при открытии спрашивает «hello» — отвечаем текущим состоянием
   useEffect(() => {
@@ -123,21 +150,38 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
-    commit({ ...live, current: { categoryId, questionId }, slideIndex: 0, showAnswer: false, answeringTeamId: null })
+    // Первой отвечает команда, чей ход
+    commit({
+      ...live,
+      current: { categoryId, questionId },
+      slideIndex: 0,
+      showAnswer: false,
+      answeringTeamId: turnTeamId,
+      triedTeamIds: [],
+    })
   }
 
   function closeQuestion() {
     commit(withClosed(live))
   }
 
+  // Перейти к другому раунду (только с табло, не посреди вопроса); отменяется через Ctrl+Z
+  function switchRound(roundId: string) {
+    if (current || roundId === round.id) return
+    commit({ ...live, roundId })
+    setPreview(null)
+  }
+
+  // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
   function handleCorrect(teamId: string) {
-    if (!currentCell.question) return
+    if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
   }
 
+  // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
-    if (!currentCell.question) return
-    commit({ ...withScore(live, teamId, -value), answeringTeamId: null })
+    if (!currentCell.question || triedTeamIds.includes(teamId)) return
+    commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
   }
 
   // Ручная правка счёта (вне вопроса тоже) — отменяется через Ctrl+Z
@@ -160,8 +204,27 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     commit({ ...live, showAnswer: true })
   }
 
+  // Кто отвечает сейчас (основная команда или перехват). Ошибившимся командам отвечать нельзя.
   function selectTeam(teamId: string | null) {
+    if (teamId && triedTeamIds.includes(teamId)) return
     setLive((s) => ({ ...s, answeringTeamId: teamId }))
+  }
+
+  // Ведущий передал ход другой команде — отменяется через Ctrl+Z
+  function setTurn(teamId: string) {
+    if (teamId !== turnTeamId) commit({ ...live, turnTeamId: teamId })
+  }
+
+  // Номер команды (клавиша или кружок на счёте): на табло — передать ход, в вопросе — кто отвечает
+  function pickTeam(teamId: string) {
+    if (!current) setTurn(teamId)
+    else selectTeam(teamId === answeringTeamId ? null : teamId)
+  }
+
+  // Вид команд в зале — это оформление игры: меняем в партии (зал видит сразу) и запоминаем в хранилище
+  function changeTheme(patch: Partial<Theme>) {
+    setLive((s) => ({ ...s, game: { ...s.game, theme: { ...s.game.theme, ...patch } } }))
+    void updateStoredGame(game.id, (g) => ({ ...g, theme: { ...g.theme, ...patch } }))
   }
 
   function toggleScreenHidden() {
@@ -179,7 +242,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   function resetGame() {
     clearState()
-    setLive(freshState(initialGame))
+    setLive(freshState({ ...initialGame, theme: game.theme })) // вид команд, выбранный в игре, оставляем
     setHistory([])
     setPreview(null)
   }
@@ -207,6 +270,14 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       // P — режим предпросмотра (когда вопрос не открыт)
       if (e.code === 'KeyP' && !current) togglePreviewMode()
 
+      // 1–9 и 0 — команда по номеру (0 = десятая): на табло — чей ход, в вопросе — кто отвечает
+      const digit = /^(Digit|Numpad)(\d)$/.exec(e.code)
+      if (digit) {
+        const index = digit[2] === '0' ? 9 : Number(digit[2]) - 1
+        const team = game.teams[index]
+        if (team) pickTeam(team.id)
+      }
+
       if (!current) return
 
       // ← / → — предыдущий / следующий слайд вопроса
@@ -218,13 +289,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         e.preventDefault()
         if (!showAnswer) showAnswerInHall()
       }
-      // 1–9 и 0 — выбрать отвечающую команду (0 = десятая)
-      const digit = /^(Digit|Numpad)(\d)$/.exec(e.code)
-      if (digit) {
-        const index = digit[2] === '0' ? 9 : Number(digit[2]) - 1
-        const team = game.teams[index]
-        if (team) selectTeam(team.id === answeringTeamId ? null : team.id)
-      }
       // + / − — «Верно» / «Неверно» для выбранной команды
       if (answeringTeamId) {
         if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') handleCorrect(answeringTeamId)
@@ -235,6 +299,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     return () => window.removeEventListener('keydown', onKey)
   })
 
+  const turnTeam = game.teams.find((t) => t.id === turnTeamId)
+  const answeringTeam = game.teams.find((t) => t.id === answeringTeamId)
+  const stealing = triedTeamIds.length > 0 // основная команда ошиблась — идёт перехват
+  // Что подсвечено на счёте: на табло — чей ход, в вопросе — кто отвечает
+  const activeTeamId = current ? answeringTeamId : turnTeamId
+  const activeLabel = current ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  const teamsStatus = !current
+    ? turnTeam && ` · ход: ${turnTeam.name}`
+    : answeringTeam
+      ? ` · ${stealing ? 'перехватывает' : 'отвечает'} ${answeringTeam.name}`
+      : stealing && ' · перехват'
+  const photosView = game.theme.teamView === 'photos'
   const allQuestions = round.categories.flatMap((c) => c.questions)
   const played = allQuestions.filter((q) => q.played).length
   // Шаг ручной правки — самый маленький номинал раунда (обычно 100)
@@ -243,7 +319,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-bg px-10 py-8 text-white">
       <header className="flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-baseline gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <a href="#/" className="text-sm text-muted hover:text-white">
             ← Мои игры
           </a>
@@ -251,6 +327,23 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           <span className="text-muted">
             {game.title} · {round.title} · сыграно {played} из {allQuestions.length}
           </span>
+          {game.rounds.length > 1 && (
+            <div role="group" aria-label="Раунд на табло" className="flex gap-1.5">
+              {game.rounds.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  onClick={() => switchRound(r.id)}
+                  disabled={!!current}
+                  aria-pressed={r.id === round.id}
+                  title={current ? 'Сначала закройте вопрос' : undefined}
+                  className={`h-11 rounded-lg px-3 text-sm ${r.id === round.id ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell disabled:opacity-40'}`}
+                >
+                  {r.title}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button
@@ -313,6 +406,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           showAnswer={showAnswer}
           teams={game.teams}
           answeringTeamId={answeringTeamId}
+          turnTeamId={turnTeamId}
+          triedTeamIds={triedTeamIds}
+          nextTurnTeamName={game.teams.find((t) => t.id === nextTeamId(game, turnTeamId))?.name}
           onSelectTeam={selectTeam}
           onShowAnswer={showAnswerInHall}
           onCorrect={handleCorrect}
@@ -326,9 +422,46 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <Board round={round} onCellClick={handleCellClick} />
       )}
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold tracking-widest text-muted">
+          КОМАНДЫ{teamsStatus || ''}
+        </h2>
+        <div role="group" aria-label="Вид команд в зале" className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => changeTheme({ teamView: 'photos' })}
+            aria-pressed={photosView}
+            className={`h-11 rounded-lg px-4 text-sm ${photosView ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+          >
+            Вид: имена + фото
+          </button>
+          <button
+            type="button"
+            onClick={() => changeTheme({ teamView: 'compact' })}
+            aria-pressed={!photosView}
+            className={`h-11 rounded-lg px-4 text-sm ${!photosView ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+          >
+            Вид: номера / названия
+          </button>
+          <button
+            type="button"
+            onClick={() => changeTheme({ showPhotos: !game.theme.showPhotos })}
+            disabled={!photosView}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+          >
+            {game.theme.showPhotos ? 'Свернуть фото' : 'Показать фото'}
+          </button>
+        </div>
+      </div>
+
       <Scoreboard
         teams={game.teams}
-        answeringTeamId={answeringTeamId}
+        players={game.players}
+        activeTeamId={activeTeamId}
+        activeLabel={activeLabel}
+        outTeamIds={current ? triedTeamIds : []}
+        onPickTeam={pickTeam}
+        pickLabel={current ? 'Отвечает команда' : 'Передать ход команде'}
         onAdjust={adjustScore}
         onSetScore={setScore}
         step={scoreStep}
@@ -339,7 +472,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <span>← / → — слайды вопроса</span>
         <span>Пробел — ответ в зале</span>
         <span>Клик по счёту — вписать счёт</span>
-        <span>1–9, 0 — отвечающая команда</span>
+        <span>1–9, 0 — чей ход / кто отвечает</span>
         <span>+ / − — верно / неверно</span>
         <span>Ctrl+Z — отменить</span>
         <span>H — скрыть экран зала</span>
