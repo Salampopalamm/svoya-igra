@@ -18,7 +18,7 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
   }
 
   if (media.type === 'image' || media.type === 'gif') {
-    return <img src={file.url} alt={media.name} className={`rounded-lg object-contain ${className}`} />
+    return <img data-media src={file.url} alt={media.name} className={`rounded-lg object-contain ${className}`} />
   }
 
   if (media.type === 'audio') {
@@ -50,7 +50,7 @@ function HallVideo({ media, url, className }: { media: MediaRef; url: string; cl
   const ref = useRef<HTMLVideoElement>(null)
   const { video, onBlocked } = useVideoControl()
   useFollowVideo(ref, video?.mediaId === media.id ? video : null, onBlocked)
-  return <video ref={ref} src={url} playsInline preload="auto" className={`rounded-lg ${className}`} />
+  return <video data-media ref={ref} src={url} playsInline preload="auto" className={`rounded-lg ${className}`} />
 }
 
 // Видео на пульте: копия без звука (видно, что сейчас в зале) и управление залом

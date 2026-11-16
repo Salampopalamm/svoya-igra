@@ -1,7 +1,10 @@
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Rubik+Mono+One&display=swap");
+/* Шрифты заголовков на выбор (Этап 5). Файлы шрифтов браузер скачивает, только когда шрифт выбран. */
+@import url("https://fonts.googleapis.com/css2?family=Tektur:wght@700&family=Press+Start+2P&family=Oswald:wght@600&family=Rubik+Glitch&family=Playfair+Display:wght@700&family=JetBrains+Mono:wght@700&family=Jura:wght@700&display=swap");
 @import "tailwindcss";
 
-/* Цвета и шрифты игры. Классы: bg-bg, bg-cell, border-line, text-muted, font-display */
+/* Цвета и шрифты игры. Классы: bg-bg, bg-cell, border-line, text-muted, font-display, bg-accent, text-on-accent.
+   Экран зала переопределяет их под оформление игры (src/theme.ts). */
 @theme {
   --font-sans: "Inter", sans-serif;
   --font-display: "Rubik Mono One", sans-serif;
@@ -9,8 +12,70 @@
   --color-cell: #34363c;
   --color-line: #55585f;
   --color-muted: #c4c6cc;
+  --color-accent: #ffffff; /* выбранная ячейка, отвечающая команда; фирменный цвет клиента */
+  --color-on-accent: #000000; /* текст на акценте */
 }
 
 body {
   font-synthesis: none;
+}
+
+/* «Обесцветить медиа»: картинки и видео вопросов в зале — чёрно-белые */
+.gray-media [data-media] {
+  filter: grayscale(1);
+}
+
+/* Анимации переходов в зале */
+@keyframes appear {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes score-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes float-up {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-36px);
+  }
+}
+
+.anim-appear {
+  animation: appear 0.35s ease-out both;
+}
+
+.anim-score {
+  animation: score-pop 0.6s ease-out;
+}
+
+.anim-float {
+  animation: float-up 1.4s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-appear,
+  .anim-score,
+  .anim-float {
+    animation: none;
+  }
 }

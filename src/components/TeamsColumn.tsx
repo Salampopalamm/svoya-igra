@@ -1,5 +1,6 @@
 import type { Player, Team } from '../types'
 import PlayerAvatar from './PlayerAvatar'
+import AnimatedScore from './AnimatedScore'
 import TeamIcon from './TeamIcon'
 
 type Props = {
@@ -25,17 +26,17 @@ export default function TeamsColumn({ teams, players, activeTeamId, activeLabel,
         return (
           <div
             key={team.id}
-            className={`flex flex-col gap-2.5 rounded-xl px-4 py-3 ${active ? 'border-[3px] border-white bg-cell' : 'border border-line'} ${out ? 'opacity-40' : ''}`}
+            className={`flex flex-col gap-2.5 rounded-xl px-4 py-3 ${active ? 'border-[3px] border-accent bg-cell' : 'border border-line'} ${out ? 'opacity-40' : ''}`}
           >
             <div className="flex items-center justify-between gap-3">
               <TeamIcon team={team} size={36} />
               <span className="flex-1 text-lg font-semibold">
                 {team.name}
                 {active && activeLabel && (
-                  <span className="ml-2 rounded bg-white px-2 py-0.5 align-middle text-xs text-black">{activeLabel}</span>
+                  <span className="ml-2 rounded bg-accent px-2 py-0.5 align-middle text-xs text-on-accent">{activeLabel}</span>
                 )}
               </span>
-              <span className="font-display text-2xl">{team.score}</span>
+              <AnimatedScore value={team.score} className="font-display text-2xl" />
             </div>
             {members.length > 0 && (
               <div className={`flex flex-wrap ${showPhotos ? 'gap-3' : 'gap-x-3 gap-y-1'}`}>

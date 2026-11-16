@@ -60,11 +60,11 @@ export default function ScreenQuestion({
     <div className="flex flex-1 flex-col justify-center gap-10">
       <div className="flex items-center justify-between gap-6">
         <span className="font-display text-3xl">
-          {categoryTitle.toUpperCase()} · <span className="rounded-lg bg-white px-4 py-1 text-black">{question.value}</span>
+          {categoryTitle.toUpperCase()} · <span className="rounded-lg bg-accent px-4 py-1 text-on-accent">{question.value}</span>
         </span>
         <div className="flex items-start gap-6">
           {badge && (
-            <span className="flex items-center gap-3 rounded-xl border-[3px] border-white bg-cell px-5 py-3 text-2xl font-semibold">
+            <span className="flex items-center gap-3 rounded-xl border-[3px] border-accent bg-cell px-5 py-3 text-2xl font-semibold">
               {badge}
             </span>
           )}

@@ -21,6 +21,7 @@ import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
 import { mergeProgress, nextTeamId, roundById } from '../game'
 import type { Game, Theme } from '../types'
+import { FONTS, TONES } from '../theme'
 
 // Свежая партия: игра из хранилища, всё по нулям
 function freshState(game: Game): LiveState {
@@ -475,6 +476,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         </div>
       </header>
 
+      <HallLook theme={game.theme} onChange={changeTheme} />
+
       {hallStatus === 'waiting-click' && (
         <div role="status" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">
           Экран зала ждёт клика: щёлкните по нему мышкой один раз — включится звук и полный экран.
@@ -576,6 +579,56 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <span>H — скрыть экран зала</span>
         <span>Esc — закрыть</span>
       </footer>
+    </div>
+  )
+}
+
+// Оформление зала прямо в игре (макет «Main»): тон фона, шрифт заголовков, «обесцветить медиа».
+// Меняется только экран зала; выбор запоминается в игре.
+function HallLook({ theme, onChange }: { theme: Theme; onChange: (patch: Partial<Theme>) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="mr-1 text-sm text-muted">Фон зала</span>
+      {TONES.map((tone) => {
+        const chosen = theme.backgroundTone === tone.id
+        return (
+          <button
+            key={tone.id}
+            type="button"
+            onClick={() => onChange({ backgroundTone: tone.id })}
+            aria-pressed={chosen}
+            aria-label={`Фон: ${tone.name}`}
+            title={tone.name}
+            className={`flex h-11 w-11 items-center justify-center rounded-lg ${chosen ? 'border-2 border-white' : 'border border-line hover:bg-cell'}`}
+          >
+            <span className="h-6 w-6 rounded-full border border-line" style={{ background: tone.bg }} />
+          </button>
+        )
+      })}
+      <span className="mx-2 h-7 w-px bg-line" aria-hidden="true" />
+      <label className="flex items-center gap-2 text-sm text-muted">
+        Шрифт
+        <select
+          value={theme.headingFont}
+          onChange={(e) => onChange({ headingFont: e.target.value })}
+          className="h-11 rounded-lg border border-line bg-cell px-3 text-sm text-white"
+        >
+          {FONTS.map((f) => (
+            <option key={f.family} value={f.family}>
+              {f.family} — {f.note}
+            </option>
+          ))}
+        </select>
+      </label>
+      <span className="mx-2 h-7 w-px bg-line" aria-hidden="true" />
+      <button
+        type="button"
+        onClick={() => onChange({ grayscaleMedia: !theme.grayscaleMedia })}
+        aria-pressed={theme.grayscaleMedia}
+        className={`h-11 rounded-lg px-4 text-sm ${theme.grayscaleMedia ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+      >
+        Обесцветить медиа: {theme.grayscaleMedia ? 'вкл' : 'выкл'}
+      </button>
     </div>
   )
 }

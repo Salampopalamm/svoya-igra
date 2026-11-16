@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from 'react'
 import Board from '../components/Board'
 import ScreenQuestion from '../components/ScreenQuestion'
 import Scoreboard from '../components/Scoreboard'
+import { GameLogo, HallFrame } from '../components/HallFrame'
 import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
+import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
 // Экран зала: только показывает то, что прислал пульт. Ответ виден, лишь когда ведущий его открыл.
@@ -51,17 +53,19 @@ export default function ScreenApp() {
   }
 
   if (!started) {
-    return (
-      <button
-        type="button"
-        onClick={start}
-        className="flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-bg text-white"
-      >
-        <span className="font-display text-6xl">СВОЯ ИГРА</span>
-        {live && <span className="text-2xl text-muted">{live.game.title}</span>}
-        <span className="rounded-xl bg-white px-10 py-5 text-3xl font-semibold text-black">Нажмите, чтобы начать</span>
+    const splash = (
+      <button type="button" onClick={start} className="flex min-h-screen w-full flex-col items-center justify-center gap-8">
+        <Splash theme={live?.game.theme} title={live?.game.title} />
+        <span className="rounded-xl bg-accent px-10 py-5 text-3xl font-semibold text-on-accent">Нажмите, чтобы начать</span>
         <span className="text-lg text-muted">Включится звук и полный экран</span>
       </button>
+    )
+    return live ? (
+      <HallFrame theme={live.game.theme} className="">
+        {splash}
+      </HallFrame>
+    ) : (
+      <div className="min-h-screen bg-bg text-white">{splash}</div>
     )
   }
 
@@ -78,10 +82,9 @@ export default function ScreenApp() {
   // Заставка: ведущий скрыл экран
   if (screenHidden) {
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-bg text-white">
-        <span className="font-display text-6xl">СВОЯ ИГРА</span>
-        <span className="text-2xl text-muted">{game.title}</span>
-      </div>
+      <HallFrame theme={game.theme} className="anim-appear flex flex-col items-center justify-center gap-6">
+        <Splash theme={game.theme} title={game.title} />
+      </HallFrame>
     )
   }
 
@@ -98,7 +101,7 @@ export default function ScreenApp() {
   const activeLabel = questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
   const outTeamIds = questionOpen ? triedTeamIds : []
 
-  const main =
+  const content =
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
         <ScreenQuestion
@@ -115,17 +118,27 @@ export default function ScreenApp() {
     ) : (
       <Board round={round} interactive={false} />
     )
+  // Вопрос или табло появляются плавно (новый ключ — новая анимация)
+  const main = (
+    <div key={question?.id ?? `board-${round.id}`} className="anim-appear flex min-h-0 flex-1 flex-col">
+      {content}
+    </div>
+  )
 
   // Вид команд выбирает ведущий на пульте: «Имена + фото» — колонка справа, иначе — полоса снизу
   const photosView = game.theme.teamView === 'photos'
 
   return (
-    <div className="flex min-h-screen flex-col gap-6 bg-bg px-12 py-10 text-white">
+    <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
       <header className="flex items-center justify-between">
-        <span className="font-display text-2xl">{game.title.toUpperCase()}</span>
+        <GameLogo
+          theme={game.theme}
+          className="h-14 max-w-60"
+          fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
+        />
         <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
         {!questionOpen && turnTeam ? (
-          <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-white bg-cell px-5 py-2 text-xl font-semibold">
+          <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
             <TeamIcon team={turnTeam} size={28} />
             Ход: {turnTeam.name}
           </span>
@@ -157,6 +170,17 @@ export default function ScreenApp() {
           />
         </>
       )}
+    </HallFrame>
+  )
+}
+
+// Заставка: логотип клиента (если есть), «СВОЯ ИГРА» и название игры
+function Splash({ theme, title }: { theme?: Theme; title?: string }) {
+  return (
+    <div className="flex flex-col items-center gap-6">
+      {theme && <GameLogo theme={theme} className="max-h-48 max-w-[60vw]" />}
+      <span className="font-display text-6xl">СВОЯ ИГРА</span>
+      {title && <span className="text-2xl text-muted">{title}</span>}
     </div>
   )
 }

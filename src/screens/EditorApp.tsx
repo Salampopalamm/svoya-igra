@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import QuestionEditor from '../components/QuestionEditor'
+import ThemeEditor from '../components/ThemeEditor'
 import { useSavedGame } from '../useSavedGame'
 import {
   GRID_SIZES,
@@ -253,6 +254,12 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           >
             + Добавить категорию
           </button>
+
+          <ThemeEditor
+            theme={game.theme}
+            onChange={(patch) => change((g) => ({ ...g, theme: { ...g.theme, ...patch } }))}
+            onMediaRemoved={(id) => dropMedia(id)}
+          />
         </>
       )}
     </div>

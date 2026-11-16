@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import type { Player, Team } from '../types'
 import PlayerAvatar from './PlayerAvatar'
+import AnimatedScore from './AnimatedScore'
 import TeamIcon from './TeamIcon'
 
 type Props = {
@@ -38,12 +39,12 @@ export default function Scoreboard({
       {teams.map((team, i) => {
         const active = team.id === activeTeamId
         const out = outTeamIds.includes(team.id)
-        const numberClass = `flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-display text-lg ${active ? 'bg-white text-black' : 'border-2 border-white'}`
+        const numberClass = `flex h-11 w-11 shrink-0 items-center justify-center rounded-full font-display text-lg ${active ? 'bg-accent text-on-accent' : 'border-2 border-white'}`
         const number = i === 9 ? 0 : i + 1
         return (
           <div
             key={team.id}
-            className={`flex flex-col gap-2 rounded-xl px-5 py-3 ${active ? 'border-[3px] border-white bg-cell' : 'border border-line'} ${out ? 'opacity-40' : ''}`}
+            className={`flex flex-col gap-2 rounded-xl px-5 py-3 ${active ? 'border-[3px] border-accent bg-cell' : 'border border-line'} ${out ? 'opacity-40' : ''}`}
           >
             <div className="flex items-center gap-4">
               {onPickTeam ? (
@@ -64,7 +65,7 @@ export default function Scoreboard({
               <span className="flex-1 text-lg font-semibold">
                 {team.name}
                 {active && activeLabel && (
-                  <span className="ml-2 rounded bg-white px-2 py-0.5 align-middle text-xs text-black">{activeLabel}</span>
+                  <span className="ml-2 rounded bg-accent px-2 py-0.5 align-middle text-xs text-on-accent">{activeLabel}</span>
                 )}
                 {out && <span className="ml-2 align-middle text-xs text-muted">ошиблись</span>}
               </span>
@@ -87,7 +88,7 @@ export default function Scoreboard({
                   {team.score}
                 </button>
               ) : (
-                <span className="font-display text-2xl">{team.score}</span>
+                <AnimatedScore value={team.score} className="font-display text-2xl" />
               )}
             </div>
             {players.some((p) => p.teamId === team.id) && (
