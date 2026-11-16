@@ -176,6 +176,7 @@ export default function QuestionView({
   const answeringTeam = teams.find((t) => t.id === answeringTeamId)
   const allTried = teams.length > 0 && teams.every((t) => triedTeamIds.includes(t.id))
   const triedNames = teams.filter((t) => triedTeamIds.includes(t.id)).map((t) => `«${t.name}»`)
+  const waitingSteal = stealing && !answeringTeam && !allTried // ошиблись, ждём, возьмётся ли кто-то перехватить
   const status = allTried
     ? 'Все команды ошиблись — покажите ответ и закройте вопрос'
     : answeringTeam
@@ -260,6 +261,17 @@ export default function QuestionView({
           {status}
         </div>
 
+        {/* Перехват: кто-то из команд берётся отвечать — или никто не хочет, и вопрос закрывается */}
+        {waitingSteal && (
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-12 self-start rounded-lg bg-white px-6 font-semibold text-black hover:opacity-90"
+          >
+            Никто не перехватывает — закрыть вопрос · Esc
+          </button>
+        )}
+
         <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${Math.min(teams.length, 5)}, 1fr)` }}>
           {teams.map((team, i) => {
             const answering = team.id === answeringTeamId
@@ -328,13 +340,15 @@ export default function QuestionView({
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
-          >
-            {allTried ? 'Закрыть вопрос · Esc' : 'Никто не ответил — закрыть · Esc'}
-          </button>
+          {!waitingSteal && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
+            >
+              {allTried ? 'Закрыть вопрос · Esc' : 'Никто не ответил — закрыть · Esc'}
+            </button>
+          )}
           {nextTurnTeamName && <span className="text-sm text-muted">Потом ход у «{nextTurnTeamName}»</span>}
         </div>
       </div>
