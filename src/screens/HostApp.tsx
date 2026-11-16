@@ -3,7 +3,21 @@ import Board from '../components/Board'
 import PreviewView from '../components/PreviewView'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
-import { CHANNEL, clearState, loadState, saveState, type Current, type LiveState, type Message } from '../live'
+import {
+  CHANNEL,
+  clearState,
+  loadState,
+  newTimer,
+  pauseTimer,
+  saveState,
+  startTimer,
+  type Current,
+  type LiveState,
+  type HallStatus,
+  type Message,
+} from '../live'
+import { VideoContext, type VideoCommand } from '../videoControl'
+import { playSound, preloadSounds } from '../sounds'
 import { updateStoredGame } from '../db'
 import { mergeProgress, nextTeamId, roundById } from '../game'
 import type { Game, Theme } from '../types'
@@ -20,10 +34,13 @@ function freshState(game: Game): LiveState {
     turnTeamId: game.teams[0]?.id ?? null,
     triedTeamIds: [],
     screenHidden: false,
+    timer: null,
+    video: null,
   }
 }
 
 const HISTORY_LIMIT = 50
+const DEFAULT_TIMER_SEC = 30 // клавиша T на вопросе без таймера
 
 type CellRef = { categoryId: string; questionId: string }
 
@@ -68,6 +85,8 @@ function withClosed(s: LiveState): LiveState {
     answeringTeamId: null,
     triedTeamIds: [],
     turnTeamId: nextTeamId(s.game, s.turnTeamId),
+    timer: null,
+    video: null,
   }
 }
 
@@ -88,11 +107,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       answeringTeamId: exists(saved.answeringTeamId) ? saved.answeringTeamId : null,
       turnTeamId: exists(saved.turnTeamId) ? saved.turnTeamId : (game.teams[0]?.id ?? null),
       triedTeamIds: (saved.triedTeamIds ?? []).filter(exists),
+      video: null, // видео после перезагрузки не продолжаем само — ведущий запустит снова
     }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
   const [preview, setPreview] = useState<CellRef | null>(null) // только на пульте
+  const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
 
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
@@ -106,12 +127,16 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     channelRef.current = channel
     channel.onmessage = (e: MessageEvent<Message>) => {
       if (e.data.type === 'hello') channel.postMessage({ type: 'state', state: liveRef.current } satisfies Message)
+      if (e.data.type === 'hall') setHallStatus(e.data.status)
     }
     return () => {
       channel.close()
       channelRef.current = null
     }
   }, [])
+
+  // Свои сигналы «верно / неверно» загружаем заранее, чтобы звучали без задержки
+  useEffect(() => preloadSounds(initialGame.theme.sounds), [initialGame])
 
   // При каждом изменении: сохранить и отправить в зал
   useEffect(() => {
@@ -150,7 +175,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
-    // Первой отвечает команда, чей ход
+    // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
+    const { question } = find({ categoryId, questionId })
     commit({
       ...live,
       current: { categoryId, questionId },
@@ -158,6 +184,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       showAnswer: false,
       answeringTeamId: turnTeamId,
       triedTeamIds: [],
+      timer: newTimer(question?.timerSec),
+      video: null,
     })
   }
 
@@ -176,12 +204,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   function handleCorrect(teamId: string) {
     if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
+    void playSound('correct', game.theme.sounds)
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
     if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
+    void playSound('wrong', game.theme.sounds)
+  }
+
+  function toggleSounds() {
+    changeTheme({ sounds: { ...game.theme.sounds, enabled: !game.theme.sounds.enabled } })
   }
 
   // Ручная правка счёта (вне вопроса тоже) — отменяется через Ctrl+Z
@@ -197,11 +231,52 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Листать слайды открытого вопроса: зал сразу показывает выбранный слайд
   function goToSlide(delta: number) {
     const count = currentCell.question?.slides.length ?? 1
-    setLive((s) => ({ ...s, slideIndex: Math.min(Math.max(s.slideIndex + delta, 0), count - 1) }))
+    setLive((s) => {
+      const slideIndex = Math.min(Math.max(s.slideIndex + delta, 0), count - 1)
+      // Ушли со слайда с видео — оно останавливается
+      return slideIndex === s.slideIndex ? s : { ...s, slideIndex, video: null }
+    })
   }
 
+  // Команда видео в зале: играть / стоять, с какой секунды, громкость. Не отменяется через Ctrl+Z.
+  function sendVideo(mediaId: string, command: VideoCommand) {
+    setLive((s) => {
+      const prev = s.video?.mediaId === mediaId ? s.video : null
+      const video = {
+        mediaId,
+        playing: command.playing ?? prev?.playing ?? false,
+        time: command.time ?? prev?.time ?? 0,
+        volume: command.volume ?? prev?.volume ?? 1,
+        // Громкость меняется без перемотки — для неё номер команды не растёт
+        seq: (s.video?.seq ?? 0) + (command.playing !== undefined || command.time !== undefined ? 1 : 0),
+      }
+      return { ...s, video }
+    })
+  }
+
+  // Ответ в зале — таймер больше не нужен, останавливаем
   function showAnswerInHall() {
-    commit({ ...live, showAnswer: true })
+    commit({ ...live, showAnswer: true, timer: live.timer && pauseTimer(live.timer) })
+  }
+
+  // Таймер: запустить / пауза (клавиша T). Не отменяется через Ctrl+Z — это не ход игры.
+  // Если таймера у вопроса нет — запускаем на стандартное время.
+  function toggleTimer() {
+    setLive((s) => {
+      const timer = s.timer ?? newTimer(DEFAULT_TIMER_SEC)
+      if (!s.current || !timer) return s
+      return { ...s, timer: timer.endsAt === null ? startTimer(timer) : pauseTimer(timer) }
+    })
+  }
+
+  // Ведущий выбрал время таймера (null — убрать таймер из зала). Таймер встаёт на начало и ждёт запуска.
+  function setTimerLength(sec: number | null) {
+    setLive((s) => (s.current ? { ...s, timer: newTimer(sec ?? undefined) } : s))
+  }
+
+  // Таймер сначала (например, для перехвата)
+  function resetTimer() {
+    setLive((s) => (s.timer ? { ...s, timer: newTimer(s.timer.totalSec) } : s))
   }
 
   // Кто отвечает сейчас (основная команда или перехват). Ошибившимся командам отвечать нельзя.
@@ -284,6 +359,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.code === 'ArrowRight') goToSlide(1)
       if (e.code === 'ArrowLeft') goToSlide(-1)
 
+      // T — запустить / остановить таймер вопроса
+      if (e.code === 'KeyT') toggleTimer()
+
       // Пробел — показать ответ в зале
       if (e.code === 'Space') {
         e.preventDefault()
@@ -364,6 +442,14 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           </button>
           <button
             type="button"
+            onClick={toggleSounds}
+            aria-pressed={game.theme.sounds.enabled}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            {game.theme.sounds.enabled ? 'Сигналы: вкл' : 'Сигналы: выкл'}
+          </button>
+          <button
+            type="button"
             onClick={undo}
             disabled={history.length === 0}
             className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
@@ -381,7 +467,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             onClick={openScreen}
             className="h-11 rounded-lg border border-white px-4 text-sm font-semibold hover:bg-white hover:text-black"
           >
-            Открыть экран для зала
+            {hallStatus === 'ready' ? 'Экран зала открыт · звук вкл' : 'Открыть экран для зала'}
           </button>
           <button
             type="button"
@@ -393,6 +479,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         </div>
       </header>
 
+      {hallStatus === 'waiting-click' && (
+        <div role="status" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">
+          Экран зала ждёт клика: щёлкните по нему мышкой один раз — включится звук и полный экран.
+        </div>
+      )}
+
       {preview && previewCell.category && previewCell.question ? (
         <PreviewView
           categoryTitle={previewCell.category.title}
@@ -400,24 +492,31 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onClose={() => setPreview(null)}
         />
       ) : current && currentCell.category && currentCell.question ? (
-        <QuestionView
-          categoryTitle={currentCell.category.title}
-          question={currentCell.question}
-          showAnswer={showAnswer}
-          teams={game.teams}
-          answeringTeamId={answeringTeamId}
-          turnTeamId={turnTeamId}
-          triedTeamIds={triedTeamIds}
-          nextTurnTeamName={game.teams.find((t) => t.id === nextTeamId(game, turnTeamId))?.name}
-          onSelectTeam={selectTeam}
-          onShowAnswer={showAnswerInHall}
-          onCorrect={handleCorrect}
-          onWrong={handleWrong}
-          onClose={closeQuestion}
-          slideIndex={slideIndex}
-          onPrevSlide={() => goToSlide(-1)}
-          onNextSlide={() => goToSlide(1)}
-        />
+        <VideoContext.Provider value={{ video: live.video, send: sendVideo }}>
+          <QuestionView
+            categoryTitle={currentCell.category.title}
+            question={currentCell.question}
+            showAnswer={showAnswer}
+            teams={game.teams}
+            answeringTeamId={answeringTeamId}
+            turnTeamId={turnTeamId}
+            triedTeamIds={triedTeamIds}
+            nextTurnTeamName={game.teams.find((t) => t.id === nextTeamId(game, turnTeamId))?.name}
+            onSelectTeam={selectTeam}
+            onShowAnswer={showAnswerInHall}
+            onCorrect={handleCorrect}
+            onWrong={handleWrong}
+            onClose={closeQuestion}
+            slideIndex={slideIndex}
+            onPrevSlide={() => goToSlide(-1)}
+            onNextSlide={() => goToSlide(1)}
+            timer={live.timer}
+            onToggleTimer={toggleTimer}
+            onResetTimer={resetTimer}
+            onSetTimerLength={setTimerLength}
+            onTimeUp={() => void playSound('time-up', game.theme.sounds)}
+          />
+        </VideoContext.Provider>
       ) : (
         <Board round={round} onCellClick={handleCellClick} />
       )}
@@ -471,6 +570,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <span>P — предпросмотр</span>
         <span>← / → — слайды вопроса</span>
         <span>Пробел — ответ в зале</span>
+        <span>T — таймер</span>
         <span>Клик по счёту — вписать счёт</span>
         <span>1–9, 0 — чей ход / кто отвечает</span>
         <span>+ / − — верно / неверно</span>

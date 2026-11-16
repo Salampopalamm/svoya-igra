@@ -265,7 +265,13 @@ export function distributeRandomly(game: Game, random: () => number = Math.rando
 
 // id всех файлов игры: в вопросах и фото участников
 export function allMediaIds(game: Game): string[] {
-  return [...allQuestions(game).flatMap(mediaIdsOf), ...game.players.flatMap((p) => (p.photo ? [p.photo.id] : []))]
+  const { logo, background, sounds } = game.theme
+  const themeMedia = [logo, background, sounds.correct, sounds.wrong].flatMap((m) => (m ? [m.id] : []))
+  return [
+    ...allQuestions(game).flatMap(mediaIdsOf),
+    ...game.players.flatMap((p) => (p.photo ? [p.photo.id] : [])),
+    ...themeMedia,
+  ]
 }
 
 // Копия игры с новым id и названием «… (копия)». Файлы общие: удаляются, только когда не нужны ни одной игре.

@@ -32,6 +32,12 @@ export default function PreviewView({ categoryTitle, question, onClose }: Props)
         <div className="mt-2 text-2xl font-semibold">{question.answer.text}</div>
         {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
       </div>
+      {(question.timerSec || question.hostNote) && (
+        <div className="flex flex-col gap-1 rounded-xl border border-line p-5">
+          {question.timerSec && <div className="text-muted">Таймер: {question.timerSec} сек</div>}
+          {question.hostNote && <p className="text-lg whitespace-pre-line">Заметка: {question.hostNote}</p>}
+        </div>
+      )}
       <button
         type="button"
         onClick={onClose}

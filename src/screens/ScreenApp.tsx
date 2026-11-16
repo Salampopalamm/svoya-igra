@@ -1,23 +1,68 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Board from '../components/Board'
 import ScreenQuestion from '../components/ScreenQuestion'
 import Scoreboard from '../components/Scoreboard'
 import TeamsColumn from '../components/TeamsColumn'
 import { roundById } from '../game'
-import { CHANNEL, type LiveState, type Message } from '../live'
+import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
+import { VideoContext } from '../videoControl'
 
 // Экран зала: только показывает то, что прислал пульт. Ответ виден, лишь когда ведущий его открыл.
 export default function ScreenApp() {
   const [live, setLive] = useState<LiveState | null>(null)
+  // Браузер разрешает звук только после клика по окну — поэтому сначала заставка «Нажмите, чтобы начать»
+  const [started, setStarted] = useState(false)
+  const channelRef = useRef<BroadcastChannel | null>(null)
+  const startedRef = useRef(started)
 
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL)
+    channelRef.current = channel
+    const report = (status: HallStatus) => channel.postMessage({ type: 'hall', status } satisfies Message)
     channel.onmessage = (e: MessageEvent<Message>) => {
-      if (e.data.type === 'state') setLive(e.data.state)
+      if (e.data.type !== 'state') return
+      setLive(e.data.state)
+      report(startedRef.current ? 'ready' : 'waiting-click') // пульт мог открыться позже зала — напоминаем о себе
     }
     channel.postMessage({ type: 'hello' } satisfies Message) // попросить у пульта текущее состояние
-    return () => channel.close()
+    const onClose = () => report('closed')
+    window.addEventListener('pagehide', onClose)
+    return () => {
+      window.removeEventListener('pagehide', onClose)
+      channel.close()
+      channelRef.current = null
+    }
   }, [])
+
+  function start() {
+    setStarted(true)
+    startedRef.current = true
+    channelRef.current?.postMessage({ type: 'hall', status: 'ready' } satisfies Message)
+    // Во весь экран (на проекторе это и нужно). Не получилось — не страшно, есть F11.
+    document.documentElement.requestFullscreen?.().catch(() => undefined)
+  }
+
+  // Видео в зале не удалось запустить со звуком — снова просим клик
+  function soundBlocked() {
+    setStarted(false)
+    startedRef.current = false
+    channelRef.current?.postMessage({ type: 'hall', status: 'waiting-click' } satisfies Message)
+  }
+
+  if (!started) {
+    return (
+      <button
+        type="button"
+        onClick={start}
+        className="flex min-h-screen w-full flex-col items-center justify-center gap-8 bg-bg text-white"
+      >
+        <span className="font-display text-6xl">СВОЯ ИГРА</span>
+        {live && <span className="text-2xl text-muted">{live.game.title}</span>}
+        <span className="rounded-xl bg-white px-10 py-5 text-3xl font-semibold text-black">Нажмите, чтобы начать</span>
+        <span className="text-lg text-muted">Включится звук и полный экран</span>
+      </button>
+    )
+  }
 
   if (!live) {
     return (
@@ -54,15 +99,18 @@ export default function ScreenApp() {
 
   const main =
     category && question ? (
-      <ScreenQuestion
-        categoryTitle={category.title}
-        question={question}
-        slideIndex={slideIndex}
-        showAnswer={showAnswer}
-        answeringTeamName={answeringTeam?.name}
-        stealing={stealing}
-        canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
-      />
+      <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
+        <ScreenQuestion
+          categoryTitle={category.title}
+          question={question}
+          slideIndex={slideIndex}
+          showAnswer={showAnswer}
+          answeringTeamName={answeringTeam?.name}
+          stealing={stealing}
+          canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
+          timer={live.timer ?? null}
+        />
+      </VideoContext.Provider>
     ) : (
       <Board round={round} interactive={false} />
     )

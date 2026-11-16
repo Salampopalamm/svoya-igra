@@ -24,11 +24,25 @@ export default function QuestionEditor({
 }: Props) {
   const { slides } = question
   const [valueText, setValueText] = useState(String(question.value)) // что набрано в поле «Стоимость»
+  const [timerText, setTimerText] = useState(question.timerSec ? String(question.timerSec) : '') // поле «Таймер»
 
   function changeValue(text: string) {
     setValueText(text)
     const value = Number(text.trim())
     if (text.trim() !== '' && Number.isInteger(value) && value > 0) onChange((q) => ({ ...q, value }))
+  }
+
+  // Таймер в секундах: пусто — без таймера
+  function changeTimer(text: string) {
+    setTimerText(text)
+    const sec = Number(text.trim())
+    if (text.trim() === '') onChange((q) => ({ ...q, timerSec: undefined }))
+    else if (Number.isInteger(sec) && sec > 0 && sec <= MAX_TIMER_SEC) onChange((q) => ({ ...q, timerSec: sec }))
+  }
+
+  function setTimerPreset(sec: number) {
+    setTimerText(String(sec))
+    onChange((q) => ({ ...q, timerSec: sec }))
   }
 
   function changeSlide(index: number, change: (slide: Content) => Content) {
@@ -71,6 +85,39 @@ export default function QuestionEditor({
               className="h-11 w-28 rounded-lg border border-line bg-bg px-3 font-display text-xl text-white focus:border-white focus:outline-none"
             />
           </label>
+          <label className="flex items-center gap-2 text-sm text-muted">
+            Таймер, сек
+            <input
+              inputMode="numeric"
+              value={timerText}
+              placeholder="нет"
+              onChange={(e) => changeTimer(e.target.value)}
+              onBlur={() => setTimerText(question.timerSec ? String(question.timerSec) : '')}
+              className="h-11 w-20 rounded-lg border border-line bg-bg px-3 text-lg text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+            />
+          </label>
+          <div role="group" aria-label="Готовые значения таймера" className="flex gap-1.5">
+            {TIMER_PRESETS.map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                onClick={() => setTimerPreset(sec)}
+                aria-pressed={question.timerSec === sec}
+                className={`h-11 min-w-11 rounded-lg px-2 text-sm ${question.timerSec === sec ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`}
+              >
+                {sec}
+              </button>
+            ))}
+            {question.timerSec && (
+              <button
+                type="button"
+                onClick={() => changeTimer('')}
+                className="h-11 rounded-lg border border-line px-3 text-sm hover:bg-bg"
+              >
+                Без таймера
+              </button>
+            )}
+          </div>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onDelete} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
@@ -135,9 +182,27 @@ export default function QuestionEditor({
           onMediaRemoved={onMediaRemoved}
         />
       </section>
+
+      <section className="flex flex-col gap-3 rounded-xl border border-line p-4">
+        <h3 className="text-sm font-semibold tracking-widest text-muted">ЗАМЕТКА ВЕДУЩЕМУ · ЗАЛ НЕ УВИДИТ НИКОГДА</h3>
+        <textarea
+          value={question.hostNote ?? ''}
+          onChange={(e) => {
+            const text = e.target.value
+            onChange((q) => ({ ...q, hostNote: text || undefined }))
+          }}
+          aria-label="Заметка ведущему"
+          placeholder="Подсказка себе: что засчитать верным ответом, что сказать залу, откуда взят вопрос"
+          rows={2}
+          className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-base text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+        />
+      </section>
     </div>
   )
 }
+
+const MAX_TIMER_SEC = 600 // таймер — до 10 минут
+const TIMER_PRESETS = [15, 30, 60]
 
 function SmallButton({ onClick, disabled, label, children }: {
   onClick: () => void

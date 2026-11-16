@@ -1,4 +1,7 @@
+import { useEffect, useRef, useState } from 'react'
+import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
+import { useTimeLeft } from '../useTimeLeft'
 import { MediaView, SlideView } from './MediaView'
 
 type Props = {
@@ -18,6 +21,11 @@ type Props = {
   slideIndex: number // какой слайд сейчас в зале
   onPrevSlide: () => void
   onNextSlide: () => void
+  timer: TimerState | null // null — у вопроса нет таймера
+  onToggleTimer: () => void
+  onResetTimer: () => void
+  onSetTimerLength: (sec: number | null) => void // ведущий выбрал время (null — без таймера)
+  onTimeUp: () => void // время вышло — сигнал
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -25,6 +33,113 @@ function describeSlide(slide: Content) {
   const kinds = { image: 'картинка', gif: 'GIF', video: 'видео', audio: 'музыка' }
   const parts = [slide.media && `${kinds[slide.media.type]} «${slide.media.name}»`, slide.text && `«${slide.text}»`]
   return parts.filter(Boolean).join(' + ')
+}
+
+const TIMER_PRESETS = [15, 30, 60]
+const MAX_TIMER_SEC = 600
+
+// Таймер на пульте: выбор времени, «Запустить / Пауза» (T) и «Сначала». Зал видит то же время.
+// Нет таймера — зал его не видит, ведущий может выбрать время прямо сейчас.
+function HostTimer({ timer, onToggle, onReset, onSetLength, onTimeUp }: {
+  timer: TimerState | null
+  onToggle: () => void
+  onReset: () => void
+  onSetLength: (sec: number | null) => void
+  onTimeUp: () => void
+}) {
+  const left = useTimeLeft(timer)
+  const [custom, setCustom] = useState('') // своё время, сек
+  const running = !!timer && timer.endsAt !== null && left > 0
+  const over = !!timer && left === 0
+  const full = !!timer && !running && left === timer.totalSec * 1000
+
+  // Сигнал — в тот момент, когда время вышло (а не при открытии уже истёкшего таймера)
+  const wasOver = useRef(over)
+  useEffect(() => {
+    if (over && !wasOver.current) onTimeUp()
+    wasOver.current = over
+  }, [over, onTimeUp])
+
+  function applyCustom() {
+    const sec = Number(custom.trim())
+    if (!Number.isInteger(sec) || sec <= 0 || sec > MAX_TIMER_SEC) return
+    onSetLength(sec)
+    setCustom('')
+  }
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-3 rounded-xl p-4 ${over ? 'border-2 border-white bg-cell' : 'border border-line'}`}
+    >
+      <div className="text-sm font-semibold tracking-widest text-muted">ТАЙМЕР</div>
+      {timer ? (
+        <>
+          <div className="min-w-24 font-display text-3xl tabular-nums" aria-live={over ? 'assertive' : 'off'}>
+            {over ? 'ВРЕМЯ!' : formatTime(left)}
+          </div>
+          <button
+            type="button"
+            onClick={onToggle}
+            className={`h-11 rounded-lg px-4 font-semibold ${running ? 'border border-white hover:bg-bg' : 'bg-white text-black hover:opacity-90'}`}
+          >
+            {running ? 'Пауза · T' : over ? 'Ещё раз · T' : full ? 'Запустить · T' : 'Продолжить · T'}
+          </button>
+          {!full && !over && (
+            <button type="button" onClick={onReset} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
+              Сначала
+            </button>
+          )}
+        </>
+      ) : (
+        <span className="text-muted">нет · выберите время</span>
+      )}
+
+      <div role="group" aria-label="Время таймера" className="flex flex-wrap items-center gap-1.5">
+        {TIMER_PRESETS.map((sec) => {
+          const chosen = timer?.totalSec === sec
+          return (
+            <button
+              key={sec}
+              type="button"
+              onClick={() => onSetLength(sec)}
+              aria-pressed={chosen}
+              className={`h-11 min-w-11 rounded-lg px-2 text-sm ${chosen ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+            >
+              {sec} с
+            </button>
+          )
+        })}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+            applyCustom()
+          }}
+          className="flex items-center gap-1.5"
+        >
+          <input
+            inputMode="numeric"
+            value={custom}
+            onChange={(e) => setCustom(e.target.value)}
+            aria-label="Своё время таймера, секунд"
+            placeholder={timer && !TIMER_PRESETS.includes(timer.totalSec) ? String(timer.totalSec) : 'сек'}
+            className="h-11 w-16 rounded-lg border border-line bg-bg px-2 text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+          />
+          <button type="submit" className="h-11 rounded-lg border border-line px-3 text-sm hover:bg-cell">
+            Поставить
+          </button>
+        </form>
+        {timer && (
+          <button
+            type="button"
+            onClick={() => onSetLength(null)}
+            className="h-11 rounded-lg border border-line px-3 text-sm hover:bg-cell"
+          >
+            Убрать
+          </button>
+        )}
+      </div>
+    </div>
+  )
 }
 
 // Открытый вопрос на пульте: ведущий всегда видит ответ, в зал он уходит по кнопке.
@@ -45,6 +160,11 @@ export default function QuestionView({
   slideIndex,
   onPrevSlide,
   onNextSlide,
+  timer,
+  onToggleTimer,
+  onResetTimer,
+  onSetTimerLength,
+  onTimeUp,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -115,6 +235,22 @@ export default function QuestionView({
           >
             Показать ответ в зале · Пробел
           </button>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-stretch gap-4">
+        <HostTimer
+          timer={timer}
+          onToggle={onToggleTimer}
+          onReset={onResetTimer}
+          onSetLength={onSetTimerLength}
+          onTimeUp={onTimeUp}
+        />
+        {question.hostNote && (
+          <div className="min-w-64 flex-1 rounded-xl border border-line p-4">
+            <div className="text-sm font-semibold tracking-widest text-muted">ЗАМЕТКА · ТОЛЬКО ДЛЯ ВЕДУЩЕГО</div>
+            <p className="mt-1 text-lg whitespace-pre-line">{question.hostNote}</p>
+          </div>
         )}
       </div>
 
