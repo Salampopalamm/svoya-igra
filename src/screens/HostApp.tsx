@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Board from '../components/Board'
 import PreviewView from '../components/PreviewView'
+import HostSettings, { GearIcon } from '../components/HostSettings'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
@@ -22,6 +23,7 @@ import { updateStoredGame } from '../db'
 import { mergeProgress, nextTeamId, roundById } from '../game'
 import type { Game, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
+import { usePinnedControls, type ControlId } from '../hostControls'
 
 // Свежая партия: игра из хранилища, всё по нулям
 function freshState(game: Game): LiveState {
@@ -115,6 +117,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
   const [preview, setPreview] = useState<CellRef | null>(null) // только на пульте
   const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
+  const [settingsOpen, setSettingsOpen] = useState(false) // открыта панель настроек (⚙)
+  const { pinned, toggle: togglePin } = usePinnedControls() // кнопки на панели ведущего
 
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
@@ -324,7 +328,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     function onKey(e: KeyboardEvent) {
       // Пока ведущий вписывает счёт или жмёт клавиши в плеере — горячие клавиши молчат
       const target = e.target as HTMLElement | null
-      if (target?.closest('input, textarea, audio, video')) return
+      if (target?.closest('input, textarea, select, audio, video')) return
 
       // Ctrl+Z — отменить последнее действие
       if (e.ctrlKey && e.code === 'KeyZ') {
@@ -334,9 +338,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       }
       // H — скрыть / показать экран зала
       if (e.code === 'KeyH') toggleScreenHidden()
-      // Esc — закрыть предпросмотр или вопрос
+      // Esc — закрыть настройки, предпросмотр или вопрос
       if (e.code === 'Escape') {
-        if (preview) setPreview(null)
+        if (settingsOpen) setSettingsOpen(false)
+        else if (preview) setPreview(null)
         else if (current) closeQuestion()
       }
       // P — режим предпросмотра (когда вопрос не открыт)
@@ -391,6 +396,106 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Шаг ручной правки — самый маленький номинал раунда (обычно 100)
   const scoreStep = allQuestions.length > 0 ? Math.min(...allQuestions.map((q) => q.value)) : 100
 
+  // Кнопка пульта по её id: одна и та же — и на панели ведущего, и в настройках
+  function renderControl(id: ControlId): ReactNode {
+    const toggleClass = (on: boolean) =>
+      `h-11 rounded-lg px-4 text-sm ${on ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`
+    switch (id) {
+      case 'preview':
+        return (
+          <button type="button" onClick={togglePreviewMode} aria-pressed={previewMode} className={toggleClass(previewMode)}>
+            Предпросмотр: {previewMode ? 'вкл' : 'выкл'} · P
+          </button>
+        )
+      case 'undo':
+        return (
+          <button
+            type="button"
+            onClick={undo}
+            disabled={history.length === 0}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+          >
+            Отменить · Ctrl+Z
+          </button>
+        )
+      case 'teams':
+        return (
+          <a
+            href={`#/teams/${encodeURIComponent(game.id)}`}
+            className="flex h-11 items-center rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            Команды и игроки
+          </a>
+        )
+      case 'reset':
+        return (
+          <button type="button" onClick={resetGame} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
+            Начать заново
+          </button>
+        )
+      case 'open-screen':
+        return (
+          <button
+            type="button"
+            onClick={openScreen}
+            className="h-11 rounded-lg border border-white px-4 text-sm font-semibold hover:bg-white hover:text-black"
+          >
+            {hallStatus === 'ready' ? 'Экран зала открыт · звук вкл' : 'Открыть экран для зала'}
+          </button>
+        )
+      case 'hide-screen':
+        return (
+          <button type="button" onClick={toggleScreenHidden} aria-pressed={screenHidden} className={toggleClass(screenHidden)}>
+            {screenHidden ? 'Экран зала скрыт · H' : 'Скрыть экран зала · H'}
+          </button>
+        )
+      case 'tone':
+        return <ToneButtons theme={game.theme} onChange={changeTheme} />
+      case 'font':
+        return <FontSelect theme={game.theme} onChange={changeTheme} />
+      case 'grayscale':
+        return (
+          <button
+            type="button"
+            onClick={() => changeTheme({ grayscaleMedia: !game.theme.grayscaleMedia })}
+            aria-pressed={game.theme.grayscaleMedia}
+            className={toggleClass(game.theme.grayscaleMedia)}
+          >
+            Обесцветить медиа: {game.theme.grayscaleMedia ? 'вкл' : 'выкл'}
+          </button>
+        )
+      case 'team-view':
+        return (
+          <div role="group" aria-label="Вид команд в зале" className="flex flex-wrap gap-2">
+            <button type="button" onClick={() => changeTheme({ teamView: 'photos' })} aria-pressed={photosView} className={toggleClass(photosView)}>
+              Вид: имена + фото
+            </button>
+            <button type="button" onClick={() => changeTheme({ teamView: 'compact' })} aria-pressed={!photosView} className={toggleClass(!photosView)}>
+              Вид: номера / названия
+            </button>
+          </div>
+        )
+      case 'photos':
+        return (
+          <button
+            type="button"
+            onClick={() => changeTheme({ showPhotos: !game.theme.showPhotos })}
+            disabled={!photosView}
+            title={photosView ? undefined : 'Фото видны только в виде «имена + фото»'}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+          >
+            {game.theme.showPhotos ? 'Свернуть фото' : 'Показать фото'}
+          </button>
+        )
+      case 'timer-sound':
+        return (
+          <button type="button" onClick={toggleSounds} aria-pressed={game.theme.sounds.enabled} className={toggleClass(game.theme.sounds.enabled)}>
+            Звук таймера: {game.theme.sounds.enabled ? 'вкл' : 'выкл'}
+          </button>
+        )
+    }
+  }
+
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-bg px-10 py-8 text-white">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -420,63 +525,32 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             </div>
           )}
         </div>
-        <div className="flex flex-wrap gap-2">
+        {/* Панель ведущего: закреплённые кнопки и ⚙ — все настройки по категориям */}
+        <div className="flex flex-wrap items-center gap-2">
+          {pinned.map((id) => (
+            <Fragment key={id}>{renderControl(id)}</Fragment>
+          ))}
           <button
             type="button"
-            onClick={togglePreviewMode}
-            aria-pressed={previewMode}
-            className={`h-11 rounded-lg px-4 text-sm ${previewMode ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+            onClick={() => setSettingsOpen(true)}
+            aria-label="Настройки пульта"
+            aria-expanded={settingsOpen}
+            title="Настройки"
+            className="flex h-11 w-11 items-center justify-center rounded-lg border border-line hover:bg-cell"
           >
-            Предпросмотр: {previewMode ? 'вкл' : 'выкл'} · P
-          </button>
-          <button
-            type="button"
-            onClick={toggleScreenHidden}
-            aria-pressed={screenHidden}
-            className={`h-11 rounded-lg px-4 text-sm ${screenHidden ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
-          >
-            {screenHidden ? 'Экран зала скрыт · H' : 'Скрыть экран зала · H'}
-          </button>
-          <button
-            type="button"
-            onClick={toggleSounds}
-            aria-pressed={game.theme.sounds.enabled}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
-          >
-            {game.theme.sounds.enabled ? 'Звук таймера: вкл' : 'Звук таймера: выкл'}
-          </button>
-          <button
-            type="button"
-            onClick={undo}
-            disabled={history.length === 0}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
-          >
-            Отменить · Ctrl+Z
-          </button>
-          <a
-            href={`#/teams/${encodeURIComponent(game.id)}`}
-            className="flex h-11 items-center rounded-lg border border-line px-4 text-sm hover:bg-cell"
-          >
-            Команды и игроки
-          </a>
-          <button
-            type="button"
-            onClick={openScreen}
-            className="h-11 rounded-lg border border-white px-4 text-sm font-semibold hover:bg-white hover:text-black"
-          >
-            {hallStatus === 'ready' ? 'Экран зала открыт · звук вкл' : 'Открыть экран для зала'}
-          </button>
-          <button
-            type="button"
-            onClick={resetGame}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
-          >
-            Начать заново
+            <GearIcon />
           </button>
         </div>
       </header>
 
-      <HallLook theme={game.theme} onChange={changeTheme} />
+      {settingsOpen && (
+        <HostSettings
+          render={renderControl}
+          pinned={pinned}
+          onTogglePin={togglePin}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
 
       {hallStatus === 'waiting-click' && (
         <div role="status" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">
@@ -526,32 +600,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         <h2 className="text-xs font-semibold tracking-widest text-muted">
           КОМАНДЫ{teamsStatus || ''}
         </h2>
-        <div role="group" aria-label="Вид команд в зале" className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => changeTheme({ teamView: 'photos' })}
-            aria-pressed={photosView}
-            className={`h-11 rounded-lg px-4 text-sm ${photosView ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
-          >
-            Вид: имена + фото
-          </button>
-          <button
-            type="button"
-            onClick={() => changeTheme({ teamView: 'compact' })}
-            aria-pressed={!photosView}
-            className={`h-11 rounded-lg px-4 text-sm ${!photosView ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
-          >
-            Вид: номера / названия
-          </button>
-          <button
-            type="button"
-            onClick={() => changeTheme({ showPhotos: !game.theme.showPhotos })}
-            disabled={!photosView}
-            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
-          >
-            {game.theme.showPhotos ? 'Свернуть фото' : 'Показать фото'}
-          </button>
-        </div>
       </div>
 
       <Scoreboard
@@ -583,11 +631,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   )
 }
 
-// Оформление зала прямо в игре (макет «Main»): тон фона, шрифт заголовков, «обесцветить медиа».
-// Меняется только экран зала; выбор запоминается в игре.
-function HallLook({ theme, onChange }: { theme: Theme; onChange: (patch: Partial<Theme>) => void }) {
+// Фон зала (макет «Main»): пять тонов кружками. Меняется только экран зала; выбор запоминается в игре.
+function ToneButtons({ theme, onChange }: { theme: Theme; onChange: (patch: Partial<Theme>) => void }) {
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div role="group" aria-label="Фон зала" className="flex flex-wrap items-center gap-2">
       <span className="mr-1 text-sm text-muted">Фон зала</span>
       {TONES.map((tone) => {
         const chosen = theme.backgroundTone === tone.id
@@ -605,30 +652,26 @@ function HallLook({ theme, onChange }: { theme: Theme; onChange: (patch: Partial
           </button>
         )
       })}
-      <span className="mx-2 h-7 w-px bg-line" aria-hidden="true" />
-      <label className="flex items-center gap-2 text-sm text-muted">
-        Шрифт
-        <select
-          value={theme.headingFont}
-          onChange={(e) => onChange({ headingFont: e.target.value })}
-          className="h-11 rounded-lg border border-line bg-cell px-3 text-sm text-white"
-        >
-          {FONTS.map((f) => (
-            <option key={f.family} value={f.family}>
-              {f.family} — {f.note}
-            </option>
-          ))}
-        </select>
-      </label>
-      <span className="mx-2 h-7 w-px bg-line" aria-hidden="true" />
-      <button
-        type="button"
-        onClick={() => onChange({ grayscaleMedia: !theme.grayscaleMedia })}
-        aria-pressed={theme.grayscaleMedia}
-        className={`h-11 rounded-lg px-4 text-sm ${theme.grayscaleMedia ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
-      >
-        Обесцветить медиа: {theme.grayscaleMedia ? 'вкл' : 'выкл'}
-      </button>
     </div>
+  )
+}
+
+// Шрифт заголовков и номиналов в зале — один из восьми
+function FontSelect({ theme, onChange }: { theme: Theme; onChange: (patch: Partial<Theme>) => void }) {
+  return (
+    <label className="flex items-center gap-2 text-sm text-muted">
+      Шрифт
+      <select
+        value={theme.headingFont}
+        onChange={(e) => onChange({ headingFont: e.target.value })}
+        className="h-11 rounded-lg border border-line bg-cell px-3 text-sm text-white"
+      >
+        {FONTS.map((f) => (
+          <option key={f.family} value={f.family}>
+            {f.family} — {f.note}
+          </option>
+        ))}
+      </select>
+    </label>
   )
 }
