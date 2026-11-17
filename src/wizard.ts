@@ -1,6 +1,6 @@
 import { demoGame } from './data/demoGame'
 import { MAX_QUESTIONS, MAX_TEAMS } from './game'
-import type { Category, Content, Game, MediaRef, Question } from './types'
+import type { Category, Content, Game, MediaRef, Question, Theme } from './types'
 
 // Мастер «Быстрая игра»: черновик, разбор таблицы из Excel и сборка игры из черновика.
 
@@ -19,6 +19,18 @@ export type Draft = {
   client: string
   rows: Row[]
   teamNames: string[]
+  theme?: Theme // оформление зала; в черновиках, сохранённых до 17.11.2026, его нет
+}
+
+// Оформление черновика (по умолчанию — строгое тёмное)
+export function draftTheme(draft: Draft): Theme {
+  return draft.theme ?? { ...demoGame.theme }
+}
+
+// Файлы оформления черновика (логотип, фон) — чтобы удалить их, если черновик выбросили
+export function draftThemeMedia(draft: Draft): MediaRef[] {
+  const { logo, background } = draftTheme(draft)
+  return [logo, background].filter((m): m is MediaRef => !!m)
 }
 
 const newId = () => crypto.randomUUID()
@@ -34,6 +46,7 @@ export function newDraft(): Draft {
     client: '',
     rows: Array.from({ length: 10 }, (_, i) => emptyRow('Категория 1', String((i + 1) * 100))),
     teamNames: ['Команда 1', 'Команда 2', 'Команда 3', 'Команда 4'],
+    theme: { ...demoGame.theme },
   }
 }
 
@@ -169,7 +182,7 @@ export function gameFromDraft(draft: Draft): Game {
     id: newId(),
     title: draft.title.trim() || 'Новая игра',
     client: draft.client.trim(),
-    theme: { ...demoGame.theme }, // оформление по умолчанию; выбор фона и шрифта — позже
+    theme: draftTheme(draft),
     players: [],
     teams,
     rules: [],

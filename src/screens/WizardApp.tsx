@@ -2,8 +2,11 @@ import { useEffect, useState } from 'react'
 import { addMediaFile, deleteMediaIfUnused, saveGame } from '../db'
 import { MAX_QUESTIONS, MAX_TEAMS } from '../game'
 import { plural } from '../plural'
+import ThemeEditor from '../components/ThemeEditor'
 import {
   clearDraft,
+  draftTheme,
+  draftThemeMedia,
   emptyRow,
   gameFromDraft,
   isRowEmpty,
@@ -18,7 +21,7 @@ import {
   type Row,
 } from '../wizard'
 
-const STEPS = ['Название', 'Вопросы', 'Команды'] as const
+const STEPS = ['Название и оформление', 'Вопросы', 'Команды'] as const
 
 const field =
   'h-11 min-w-0 rounded-lg border border-line bg-bg px-3 text-sm text-white placeholder:text-muted/60 focus:border-white focus:outline-none'
@@ -49,6 +52,7 @@ export default function WizardApp() {
   function startOver() {
     if (!window.confirm('Начать с чистого листа? Всё, что вы ввели в мастере, пропадёт.')) return
     for (const r of draft.rows) if (r.media) void deleteMediaIfUnused(r.media.id)
+    for (const m of draftThemeMedia(draft)) void deleteMediaIfUnused(m.id)
     setDraft(newDraft())
     setStep(0)
   }
@@ -161,34 +165,43 @@ export default function WizardApp() {
   )
 }
 
-// ---- Шаг 1: название ----
+// ---- Шаг 1: название и оформление ----
 
 function TitleStep({ draft, update }: { draft: Draft; update: (patch: Partial<Draft>) => void }) {
+  const theme = draftTheme(draft)
   return (
-    <section className="flex max-w-2xl flex-col gap-5">
-      <label className="flex flex-col gap-2 text-sm text-muted">
-        Название игры
-        <input
-          autoFocus
-          value={draft.title}
-          onChange={(e) => update({ title: e.target.value })}
-          placeholder="Например: Новогодний корпоратив"
-          className="h-14 rounded-lg border border-line bg-bg px-4 text-xl font-semibold text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
-        />
-      </label>
-      <label className="flex flex-col gap-2 text-sm text-muted">
-        Для кого (необязательно)
-        <input
-          value={draft.client}
-          onChange={(e) => update({ client: e.target.value })}
-          placeholder="Компания или повод"
-          className={`${field} text-base`}
-        />
-      </label>
+    <div className="flex flex-col gap-6">
+      <section className="flex max-w-2xl flex-col gap-5">
+        <label className="flex flex-col gap-2 text-sm text-muted">
+          Название игры
+          <input
+            autoFocus
+            value={draft.title}
+            onChange={(e) => update({ title: e.target.value })}
+            placeholder="Например: Новогодний корпоратив"
+            className="h-14 rounded-lg border border-line bg-bg px-4 text-xl font-semibold text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+          />
+        </label>
+        <label className="flex flex-col gap-2 text-sm text-muted">
+          Для кого (необязательно)
+          <input
+            value={draft.client}
+            onChange={(e) => update({ client: e.target.value })}
+            placeholder="Компания или повод"
+            className={`${field} text-base`}
+          />
+        </label>
+      </section>
       <p className="text-sm text-muted">
-        Оформление — фон, шрифт, логотип и фирменный цвет — появится позже. Пока игра будет в строгом тёмном стиле.
+        Оформление меняет только экран зала. Можно ничего не выбирать — будет строгий тёмный стиль; поменять всё это
+        можно и потом, в редакторе игры.
       </p>
-    </section>
+      <ThemeEditor
+        theme={theme}
+        onChange={(patch) => update({ theme: { ...theme, ...patch } })}
+        onMediaRemoved={(id) => void deleteMediaIfUnused(id)}
+      />
+    </div>
   )
 }
 
