@@ -3,6 +3,17 @@ import Board from '../components/Board'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
+import FinalHost, { FinalAnswers } from '../components/FinalHost'
+import {
+  betsReady,
+  FINAL_TIMER_SEC,
+  finalStateOf,
+  participants,
+  remainingThemes,
+  removeTheme,
+  remover,
+  withFinalScores,
+} from '../final'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
@@ -128,6 +139,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
   const round = roundById(game, live.roundId)
+  // Финальный раунд идёт по своим шагам (final.ts); в обычном раунде final = null
+  const isFinal = round.kind === 'final'
+  const final = isFinal ? finalStateOf(live.final, round) : null
   const media = usePreload(game) // файлы игры заранее, и проверка, что все открываются
 
   // Канал связи: экран зала при открытии спрашивает «hello» — отвечаем текущим состоянием
@@ -217,6 +231,62 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   function handleWrong(teamId: string) {
     if (!currentCell.question || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
+  }
+
+  // ---- Финал ----
+
+  // Команда убрала тему (ведущий нажал её на пульте)
+  function finalRemoveTheme(categoryId: string) {
+    if (final) commit({ ...live, final: removeTheme(round, final, categoryId) })
+  }
+
+  // Ставку вписывают по цифре — каждую не запоминаем для Ctrl+Z
+  function finalSetBet(teamId: string, bet: number | undefined) {
+    setLive((s) => {
+      const f = finalStateOf(s.final, roundById(s.game, s.roundId))
+      const bets = { ...f.bets }
+      if (bet === undefined) delete bets[teamId]
+      else bets[teamId] = bet
+      return { ...s, final: { ...f, bets } }
+    })
+  }
+
+  // Ставки сделаны — открываем вопрос оставшейся темы. Отвечают все играющие сразу (на бумажках).
+  function finalShowQuestion() {
+    if (!final || !betsReady(game, final)) return
+    const theme = remainingThemes(round, final)[0]
+    if (!theme) return
+    const bets = Object.fromEntries(participants(game, final).map((t) => [t.id, final.bets[t.id]]))
+    commit({
+      ...live,
+      final: { ...final, bets, correct: {}, phase: 'question' },
+      current: { categoryId: theme.category.id, questionId: theme.question.id },
+      slideIndex: 0,
+      showAnswer: false,
+      answeringTeamId: null,
+      triedTeamIds: [],
+      timer: newTimer(theme.question.timerSec ?? FINAL_TIMER_SEC),
+      video: null,
+    })
+  }
+
+  // Ведущий отметил ответ команды: верно / неверно
+  function finalMark(teamId: string, correct: boolean) {
+    if (final) commit({ ...live, final: { ...final, correct: { ...final.correct, [teamId]: correct } } })
+  }
+
+  // Итоги: счёт по ставкам, вопрос сыгран, зал показывает таблицу и ответ
+  function finalReveal() {
+    if (!final) return
+    commit({
+      ...withPlayed({ ...live, game: withFinalScores(game, final) }, current),
+      final: { ...final, phase: 'results' },
+      current: null,
+      slideIndex: 0,
+      showAnswer: false,
+      timer: null,
+      video: null,
+    })
   }
 
   // Сигнал «время вышло» можно выключить
@@ -347,14 +417,14 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.code === 'Escape') {
         if (settingsOpen) setSettingsOpen(false)
         else if (preview) setPreview(null)
-        else if (current) closeQuestion()
+        else if (current && !isFinal) closeQuestion() // вопрос финала закрывается только итогами
       }
-      // P — режим предпросмотра (когда вопрос не открыт)
-      if (e.code === 'KeyP' && !current) togglePreviewMode()
+      // P — режим предпросмотра (когда вопрос не открыт; в финале табло нет)
+      if (e.code === 'KeyP' && !current && !isFinal) togglePreviewMode()
 
       // 1–9 и 0 — команда по номеру (0 = десятая): на табло — чей ход, в вопросе — кто отвечает
       const digit = /^(Digit|Numpad)(\d)$/.exec(e.code)
-      if (digit) {
+      if (digit && !isFinal) {
         const index = digit[2] === '0' ? 9 : Number(digit[2]) - 1
         const team = game.teams[index]
         if (team) pickTeam(team.id)
@@ -372,7 +442,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       // Пробел — показать ответ в зале
       if (e.code === 'Space') {
         e.preventDefault()
-        if (!showAnswer) showAnswerInHall()
+        if (!showAnswer && !isFinal) showAnswerInHall() // в финале ответ — вместе с итогами
       }
       // + / − — «Верно» / «Неверно» для выбранной команды
       if (answeringTeamId) {
@@ -388,9 +458,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const answeringTeam = game.teams.find((t) => t.id === answeringTeamId)
   const stealing = triedTeamIds.length > 0 // основная команда ошиблась — идёт перехват
   // Что подсвечено на счёте: на табло — чей ход, в вопросе — кто отвечает
-  const activeTeamId = current ? answeringTeamId : turnTeamId
-  const activeLabel = current ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
-  const teamsStatus = !current
+  // В финале подсвечена только команда, которая убирает тему
+  const finalRemover = final?.phase === 'themes' ? remover(game, final) : undefined
+  const activeTeamId = final ? (finalRemover?.id ?? null) : current ? answeringTeamId : turnTeamId
+  const activeLabel = final ? 'УБИРАЕТ' : current ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  const teamsStatus = final
+    ? finalRemover && ` · тему убирает ${finalRemover.name}`
+    : !current
     ? turnTeam && ` · ход: ${turnTeam.name}`
     : answeringTeam
       ? ` · ${stealing ? 'перехватывает' : 'отвечает'} ${answeringTeam.name}`
@@ -579,7 +653,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       ) : current && currentCell.category && currentCell.question ? (
         <VideoContext.Provider value={{ video: live.video, send: sendVideo }}>
           <QuestionView
-            categoryTitle={currentCell.category.title}
+            categoryTitle={final ? `Финал · ${currentCell.category.title}` : currentCell.category.title}
             question={currentCell.question}
             showAnswer={showAnswer}
             teams={game.teams}
@@ -602,8 +676,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             onTimeUp={() => {
               if (game.theme.sounds.enabled) playTimeUp()
             }}
+            final={final ? <FinalAnswers game={game} final={final} onMark={finalMark} onReveal={finalReveal} /> : undefined}
           />
         </VideoContext.Provider>
+      ) : final ? (
+        <FinalHost
+          game={game}
+          round={round}
+          final={final}
+          onRemoveTheme={finalRemoveTheme}
+          onSetBet={finalSetBet}
+          onShowQuestion={finalShowQuestion}
+        />
       ) : (
         <Board round={round} onCellClick={handleCellClick} />
       )}
@@ -620,7 +704,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         activeTeamId={activeTeamId}
         activeLabel={activeLabel}
         outTeamIds={current ? triedTeamIds : []}
-        onPickTeam={pickTeam}
+        onPickTeam={isFinal ? () => undefined : pickTeam}
         pickLabel={current ? 'Отвечает команда' : 'Передать ход команде'}
         onAdjust={adjustScore}
         onSetScore={setScore}

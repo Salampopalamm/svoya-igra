@@ -5,6 +5,8 @@ import Scoreboard from '../components/Scoreboard'
 import { GameLogo, HallFrame } from '../components/HallFrame'
 import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
+import FinalScreen from '../components/FinalScreen'
+import { finalStateOf, remover } from '../final'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
@@ -107,31 +109,37 @@ export default function ScreenApp() {
   const triedTeamIds = live.triedTeamIds ?? []
   const stealing = triedTeamIds.length > 0
   const questionOpen = !!(category && question)
-  // Подсветка команды: на табло — чей ход, в вопросе — кто отвечает; ошибившиеся — бледные
-  const activeTeamId = questionOpen ? answeringTeamId : (turnTeam?.id ?? null)
-  const activeLabel = questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  // Финал идёт своими шагами: темы → ставки → вопрос → итоги
+  const final = round.kind === 'final' ? finalStateOf(live.final, round) : null
+  const finalRemover = final?.phase === 'themes' ? remover(game, final) : undefined
+  // Подсветка команды: на табло — чей ход, в вопросе — кто отвечает; ошибившиеся — бледные; в финале — кто убирает тему
+  const activeTeamId = final ? (finalRemover?.id ?? null) : questionOpen ? answeringTeamId : (turnTeam?.id ?? null)
+  const activeLabel = final ? 'УБИРАЕТ' : questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
   const outTeamIds = questionOpen ? triedTeamIds : []
 
   const content =
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
         <ScreenQuestion
-          categoryTitle={category.title}
+          categoryTitle={final ? `Финал · ${category.title}` : category.title}
+          hideValue={!!final}
           question={question}
           slideIndex={slideIndex}
           showAnswer={showAnswer}
-          answeringTeam={answeringTeam}
+          answeringTeam={final ? undefined : answeringTeam}
           stealing={stealing}
           canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
           timer={live.timer ?? null}
         />
       </VideoContext.Provider>
+    ) : final ? (
+      <FinalScreen game={game} round={round} final={final} />
     ) : (
       <Board round={round} interactive={false} />
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
-    <div key={question?.id ?? `board-${round.id}`} className="anim-appear flex min-h-0 flex-1 flex-col">
+    <div key={question?.id ?? (final ? `final-${final.phase}` : `board-${round.id}`)} className="anim-appear flex min-h-0 flex-1 flex-col">
       {content}
     </div>
   )
@@ -148,7 +156,7 @@ export default function ScreenApp() {
           fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
         />
         <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
-        {!questionOpen && turnTeam ? (
+        {!questionOpen && !final && turnTeam ? (
           <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
             <TeamIcon team={turnTeam} size={28} />
             Ход: {turnTeam.name}

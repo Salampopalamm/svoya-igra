@@ -51,6 +51,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const [previewing, setPreviewing] = useState(false) // открыт предпросмотр вопроса «как в зале»
 
   const round = roundById(game, roundId)
+  const isFinal = round.kind === 'final' // финал: каждая категория — тема с одним вопросом
   const problems = gameProblems(game)
 
   // Перейти к недочёту: открыть его раунд и, если есть, сам вопрос
@@ -76,8 +77,28 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const category = round.categories.find((c) => c.questions.some((q) => q.id === selectedId))
   const question = category?.questions.find((q) => q.id === selectedId)
 
+  // Тип раунда: обычный или финал. В финале у каждой темы один вопрос — лишние убираем (с подтверждением).
+  function setRoundKind(kind: 'standard' | 'final') {
+    if (kind === round.kind) return
+    if (kind === 'final') {
+      const { removed } = resizeRound(round, 1)
+      const filled = removed.filter((q) => !isEmptyQuestion(q))
+      if (filled.length > 0) {
+        const ok = window.confirm(
+          `В финале у каждой темы один вопрос (самый дешёвый в категории). Остальные заполненные вопросы (${filled.length}) удалятся. Это нельзя отменить. Продолжить?`,
+        )
+        if (!ok) return
+      }
+      dropMedia(...removed.flatMap(mediaIdsOf))
+      change((g) => updateRound(g, round.id, (r) => ({ ...resizeRound(r, 1).round, kind: 'final' })))
+    } else {
+      change((g) => updateRound(g, round.id, (r) => ({ ...r, kind: 'standard' })))
+    }
+  }
+
   function addCategory() {
-    const size = gridSizeOf(round) // столько же вопросов, сколько в остальных категориях; в пустой игре — 10
+    // В финале — тема с одним вопросом; иначе столько же вопросов, сколько в остальных категориях (в пустой игре — 10)
+    const size = isFinal ? 1 : gridSizeOf(round)
     change((g) => updateRound(g, round.id, (r) => ({ ...r, categories: [...r.categories, newCategory(size)] })))
   }
 
@@ -102,7 +123,8 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
 
   // Сколько колонок у ячеек в строке категории (одинаково для всех строк, чтобы номиналы стояли ровно).
   // До 6 ячеек (с «+») — одна строка, больше — две строки, иначе 10 ячеек не влезут в ноутбук.
-  const cells = Math.max(1, ...round.categories.map((c) => c.questions.length + (c.questions.length < MAX_QUESTIONS ? 1 : 0)))
+  const maxInCategory = isFinal ? 1 : MAX_QUESTIONS
+  const cells = Math.max(1, ...round.categories.map((c) => c.questions.length + (c.questions.length < maxInCategory ? 1 : 0)))
   const columns = cells <= 6 ? cells : Math.ceil(cells / 2)
 
   function deleteCategory(c: Category) {
@@ -200,7 +222,20 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
             <button type="button" onClick={newRound} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
               + Раунд
             </button>
-            <label className="ml-auto flex items-center gap-2 text-sm text-muted">
+            <div role="group" aria-label="Тип раунда" className="ml-auto flex items-center gap-1.5">
+              {(['standard', 'final'] as const).map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => setRoundKind(kind)}
+                  aria-pressed={(kind === 'final') === isFinal}
+                  className={`h-11 rounded-lg px-3 text-sm ${(kind === 'final') === isFinal ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
+                >
+                  {kind === 'final' ? 'Финал' : 'Обычный раунд'}
+                </button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-sm text-muted">
               Название раунда
               <input
                 value={round.title}
@@ -225,11 +260,18 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <p className="text-muted">
-              Нажмите на ячейку, чтобы изменить вопрос: текст, слайды, картинку или музыку. Название категории меняется
-              прямо в строке.
-            </p>
-            <div role="group" aria-label="Готовая сетка" className="flex items-center gap-2">
+            {isFinal ? (
+              <p className="text-muted">
+                Финал: каждая категория — тема с одним вопросом. В игре команды по очереди убирают темы, на последнюю
+                делают ставки, отвечают все сразу.
+              </p>
+            ) : (
+              <p className="text-muted">
+                Нажмите на ячейку, чтобы изменить вопрос: текст, слайды, картинку или музыку. Название категории меняется
+                прямо в строке.
+              </p>
+            )}
+            {!isFinal && <div role="group" aria-label="Готовая сетка" className="flex items-center gap-2">
               <span className="text-sm text-muted">Вопросов в категории:</span>
               {GRID_SIZES.map((size) => (
                 <button
@@ -243,7 +285,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                   {size}
                 </button>
               ))}
-            </div>
+            </div>}
           </div>
 
           <GameCheck game={game} problems={problems} onShow={showProblem} />
@@ -255,6 +297,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                 category={c}
                 columns={columns}
                 twoRows={cells > 6}
+                final={isFinal}
                 isFirst={i === 0}
                 isLast={i === round.categories.length - 1}
                 onRename={(title) => change((g) => updateCategory(g, c.id, (x) => ({ ...x, title })))}
@@ -354,10 +397,11 @@ function GameCheck({ game, problems, onShow }: {
 }
 
 // Строка категории:порядок, название, ячейки вопросов, «+ вопрос», удаление
-function CategoryRow({ category, columns, twoRows, isFirst, isLast, onRename, onMove, onDelete, onOpenQuestion, onAddQuestion }: {
+function CategoryRow({ category, columns, twoRows, final, isFirst, isLast, onRename, onMove, onDelete, onOpenQuestion, onAddQuestion }: {
   category: Category
   columns: number // сколько ячеек в одном ряду
   twoRows: boolean // ячейки идут в два ряда — делаем их пониже
+  final: boolean // финал: в теме один вопрос, стоимости нет (играют на ставки)
   isFirst: boolean
   isLast: boolean
   onRename: (title: string) => void
@@ -401,13 +445,13 @@ function CategoryRow({ category, columns, twoRows, isFirst, isLast, onRename, on
               onClick={() => onOpenQuestion(q.id)}
               className={`@container flex ${cellHeight} flex-col items-center justify-center rounded-xl border-2 font-display transition hover:bg-white hover:text-black ${empty ? 'border-dashed border-muted text-muted' : 'border-white'}`}
             >
-              <span className="text-[min(1.875rem,20cqw)]">{q.value}</span>
+              <span className="text-[min(1.875rem,20cqw)]">{final ? 'ВОПРОС' : q.value}</span>
               {note && <span className="font-sans text-xs font-normal">{note}</span>}
             </button>
           )
         })}
 
-        {category.questions.length < MAX_QUESTIONS && (
+        {category.questions.length < (final ? 1 : MAX_QUESTIONS) && (
           <button
             type="button"
             onClick={onAddQuestion}

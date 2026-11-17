@@ -17,6 +17,17 @@ export type LiveState = {
   screenHidden: boolean // экран зала скрыт заставкой
   timer: TimerState | null // таймер открытого вопроса (null — у вопроса нет таймера)
   video: VideoState | null // видео в зале, которым управляет ведущий (null — ни одно не запускали)
+  final?: FinalState | null // ход финального раунда (функции — в final.ts); в старых сохранениях его нет
+}
+
+// Финальный раунд: убирание тем → ставки → вопрос → итоги.
+// Ставки и отметки «верно» есть в состоянии, но зал показывает их только на итогах.
+export type FinalState = {
+  roundId: string // какой раунд — финал
+  phase: 'themes' | 'bets' | 'question' | 'results'
+  removedIds: string[] // убранные темы (id категорий)
+  bets: Record<string, number> // ставки команд (id команды → ставка)
+  correct: Record<string, boolean> // кто ответил верно (отмечает ведущий)
 }
 
 // Видео в зале. Со звуком оно играет в окне зала, на пульте — его копия без звука.

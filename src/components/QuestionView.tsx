@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
@@ -27,6 +27,7 @@ type Props = {
   onResetTimer: () => void
   onSetTimerLength: (sec: number | null) => void // ведущий выбрал время (null — без таймера)
   onTimeUp: () => void // время вышло — сигнал
+  final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -166,6 +167,7 @@ export default function QuestionView({
   onResetTimer,
   onSetTimerLength,
   onTimeUp,
+  final,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -189,7 +191,13 @@ export default function QuestionView({
     <div className="flex flex-1 flex-col gap-6">
       <div className="flex items-center justify-between gap-4">
         <span className="font-display text-2xl">
-          {categoryTitle.toUpperCase()} · <span className="rounded-lg bg-white px-4 py-1 text-black">{question.value}</span>
+          {categoryTitle.toUpperCase()}
+          {!final && (
+            <>
+              {' · '}
+              <span className="rounded-lg bg-white px-4 py-1 text-black">{question.value}</span>
+            </>
+          )}
         </span>
         <span className="text-sm text-muted">в зале сейчас этот вопрос</span>
       </div>
@@ -227,7 +235,9 @@ export default function QuestionView({
           <div className="mt-1 text-3xl font-semibold">{question.answer.text}</div>
           {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
         </div>
-        {showAnswer ? (
+        {final ? (
+          <span className="text-muted">Зал увидит ответ вместе с итогами</span>
+        ) : showAnswer ? (
           <span className="text-muted">Ответ показан в зале</span>
         ) : (
           <button
@@ -256,6 +266,7 @@ export default function QuestionView({
         )}
       </div>
 
+      {final ?? (
       <div className="mt-auto flex flex-col gap-3">
         <div className="text-xl font-semibold" aria-live="polite">
           {status}
@@ -352,6 +363,7 @@ export default function QuestionView({
           {nextTurnTeamName && <span className="text-sm text-muted">Потом ход у «{nextTurnTeamName}»</span>}
         </div>
       </div>
+      )}
     </div>
   )
 }
