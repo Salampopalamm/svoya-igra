@@ -170,7 +170,7 @@ export function questionProblem(question: Question): QuestionProblem | null {
 }
 
 export type GameProblem = {
-  roundId: string
+  roundId?: string // нет — недочёт не в раунде (например, в правилах игры)
   categoryId?: string
   questionId?: string // какой вопрос открыть, чтобы исправить
   text: string
@@ -346,6 +346,7 @@ export function allMediaRefs(game: Game): MediaRef[] {
     background,
     sounds.correct,
     sounds.wrong,
+    ...game.rules.map((r) => r.then.media), // картинки и видео, которые правила показывают в зале
   ].filter((m): m is MediaRef => !!m)
 }
 

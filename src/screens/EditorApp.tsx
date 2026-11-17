@@ -2,6 +2,8 @@ import { useState } from 'react'
 import HallPreview from '../components/HallPreview'
 import QuestionEditor from '../components/QuestionEditor'
 import ThemeEditor from '../components/ThemeEditor'
+import RulesEditor from '../components/RulesEditor'
+import { ruleProblem } from '../rules'
 import { useSavedGame } from '../useSavedGame'
 import {
   GRID_SIZES,
@@ -63,10 +65,22 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
 
   const round = roundById(game, roundId)
   const isFinal = round.kind === 'final' // финал: каждая категория — тема с одним вопросом
-  const problems = gameProblems(game)
+  // Недочёты игры и правил: правило без цели — тоже недочёт
+  const problems: GameProblem[] = [
+    ...gameProblems(game),
+    ...game.rules.flatMap((r, i) => {
+      const problem = ruleProblem(game, r)
+      return problem ? [{ text: `правило ${i + 1}: ${problem}` }] : []
+    }),
+  ]
 
   // Перейти к недочёту: открыть его раунд и, если есть, сам вопрос
   function showProblem(problem: GameProblem) {
+    if (!problem.roundId) {
+      setSelectedId(null)
+      document.getElementById('rules')?.scrollIntoView({ behavior: 'smooth' }) // недочёт в правилах
+      return
+    }
     setRoundId(problem.roundId)
     setSelectedId(problem.questionId ?? null)
   }
@@ -228,6 +242,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                   className={`h-11 rounded-lg px-4 text-sm ${r.id === round.id ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
                 >
                   {r.title}
+                  {r.hidden && <span aria-label=", скрытый"> 🔒</span>}
                   {problems.some((p) => p.roundId === r.id) && <span aria-label=", есть недочёты"> ⚠</span>}
                 </button>
               ))}
@@ -248,6 +263,20 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                 </button>
               ))}
             </div>
+            {game.rounds[0]?.id !== round.id && (
+              <label className="flex h-11 cursor-pointer items-center gap-2 rounded-lg border border-line px-3 text-sm" title="Раунд откроет правило «ЕСЛИ → ТО» или ведущий на пульте">
+                <input
+                  type="checkbox"
+                  checked={!!round.hidden}
+                  onChange={(e) => {
+                    const hidden = e.target.checked || undefined
+                    change((g) => updateRound(g, round.id, (r) => ({ ...r, hidden })))
+                  }}
+                  className="h-5 w-5 accent-white"
+                />
+                🔒 Скрытый раунд
+              </label>
+            )}
             <label className="flex items-center gap-2 text-sm text-muted">
               Название раунда
               <input
@@ -331,6 +360,12 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
             + Добавить категорию
           </button>
 
+          <RulesEditor
+            game={game}
+            onChange={(update) => change((g) => ({ ...g, rules: update(g.rules) }))}
+            onMediaRemoved={(id) => dropMedia(id)}
+          />
+
           <ThemeEditor
             theme={game.theme}
             onChange={(patch) => change((g) => ({ ...g, theme: { ...g.theme, ...patch } }))}
@@ -379,7 +414,7 @@ function GameCheck({ game, problems, onShow }: {
       <ul className="flex flex-col">
         {shown.map((p, i) => {
           // Где недочёт: раунд (если их несколько) и категория
-          const where = [game.rounds.length > 1 ? roundTitle(p.roundId) : null, categoryTitle(p.categoryId)]
+          const where = [game.rounds.length > 1 && p.roundId ? roundTitle(p.roundId) : null, categoryTitle(p.categoryId)]
             .filter(Boolean)
             .join(' · ')
           return (

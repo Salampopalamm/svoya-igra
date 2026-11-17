@@ -83,12 +83,16 @@ export type Round = {
   title: string
   kind: 'standard' | 'music' | 'final'
   categories: Category[]
+  hidden?: boolean // скрытый раунд: на пульте его нет, пока его не откроет правило или ведущий
 }
 
+// Правило «ЕСЛИ → ТО». Когда условие выполнилось, пульт предлагает ведущему выполнить действие.
+//   when.value: score-reached — сколько баллов (число), round-finished — id раунда, question-played — id вопроса
+//   then.target: open-round — id раунда, unlock-question — id вопроса, show-media — id файла (сам файл — then.media)
 export type Rule = {
   id: string
   when: { kind: 'score-reached' | 'round-finished' | 'question-played'; value: string | number }
-  then: { kind: 'open-round' | 'unlock-question' | 'add-points' | 'show-media'; target: string }
+  then: { kind: 'open-round' | 'unlock-question' | 'add-points' | 'show-media'; target: string; media?: MediaRef }
 }
 
 export type Game = {

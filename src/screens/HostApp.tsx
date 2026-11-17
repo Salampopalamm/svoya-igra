@@ -37,8 +37,9 @@ import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
 import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
 import { chooseOption, startBranch } from '../tree'
+import { describeRule, readyRules } from '../rules'
 import { BranchBody, BranchControls } from '../components/BranchHost'
-import type { Game, Question, Theme } from '../types'
+import type { Game, Question, Rule, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { usePreload } from '../preload'
@@ -160,6 +161,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
   const unlockedIds = live.unlockedIds ?? []
+  const unlockedRoundIds = live.unlockedRoundIds ?? []
+  const rulesDone = live.rulesDone ?? []
   const round = roundById(game, live.roundId)
   // Финальный раунд идёт по своим шагам (final.ts); в обычном раунде final = null
   const isFinal = round.kind === 'final'
@@ -261,9 +264,40 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     commit(withClosed(live))
   }
 
+  // ---- Правила «ЕСЛИ → ТО» ----
+  // Пока вопрос открыт, правила ждут; на табло пульт предлагает выполнить их по одному.
+  const pendingRules = current ? [] : readyRules(game, rulesDone, unlockedIds)
+
+  function runRule(rule: Rule) {
+    const { then } = rule
+    commit({
+      ...live,
+      rulesDone: [...rulesDone, rule.id],
+      unlockedIds: then.kind === 'unlock-question' && !unlockedIds.includes(then.target) ? [...unlockedIds, then.target] : unlockedIds,
+      unlockedRoundIds:
+        then.kind === 'open-round' && !unlockedRoundIds.includes(then.target) ? [...unlockedRoundIds, then.target] : unlockedRoundIds,
+      shownMedia: then.kind === 'show-media' && then.media ? then.media : live.shownMedia,
+    })
+  }
+
+  function skipRule(rule: Rule) {
+    commit({ ...live, rulesDone: [...rulesDone, rule.id] })
+  }
+
+  // Скрытый раунд закрыт, пока его не откроет правило или ведущий
+  const roundLocked = (r: { id: string; hidden?: boolean }) => !!r.hidden && !unlockedRoundIds.includes(r.id)
+
+  function openHiddenRound(roundId: string, title: string) {
+    if (current) return
+    if (!window.confirm(`Открыть скрытый раунд «${title}»? После этого на него можно переключиться.`)) return
+    commit({ ...live, unlockedRoundIds: [...unlockedRoundIds, roundId] })
+  }
+
   // Перейти к другому раунду (только с табло, не посреди вопроса); отменяется через Ctrl+Z
   function switchRound(roundId: string) {
     if (current || roundId === round.id) return
+    const target = game.rounds.find((r) => r.id === roundId)
+    if (target && roundLocked(target)) return
     commit({ ...live, roundId })
     setPreview(null)
   }
@@ -700,7 +734,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           </span>
           {game.rounds.length > 1 && (
             <div role="group" aria-label="Раунд на табло" className="flex gap-1.5">
-              {game.rounds.map((r) => (
+              {game.rounds.map((r) =>
+                roundLocked(r) ? (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => openHiddenRound(r.id, r.title)}
+                    disabled={!!current}
+                    title="Скрытый раунд: нажмите, чтобы открыть его"
+                    className="h-11 rounded-lg border border-dashed border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40"
+                  >
+                    🔒 {r.title}
+                  </button>
+                ) : (
                 <button
                   key={r.id}
                   type="button"
@@ -712,7 +758,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
                 >
                   {r.title}
                 </button>
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>
@@ -741,6 +788,38 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onTogglePin={togglePin}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {/* Правило «ЕСЛИ → ТО» сработало — ведущий решает, выполнить ли его */}
+      {pendingRules.slice(0, 1).map((rule) => {
+        const text = describeRule(game, rule)
+        return (
+          <div key={rule.id} role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-white bg-cell px-5 py-3">
+            <span className="mr-auto">
+              <span className="font-semibold">Сработало правило:</span> ЕСЛИ {text.when} → ТО {text.then}
+              {pendingRules.length > 1 && <span className="text-sm text-muted"> · и ещё {pendingRules.length - 1}</span>}
+            </span>
+            <button type="button" onClick={() => runRule(rule)} className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90">
+              Выполнить
+            </button>
+            <button type="button" onClick={() => skipRule(rule)} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
+              Пропустить
+            </button>
+          </div>
+        )
+      })}
+
+      {live.shownMedia && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-white px-5 py-3">
+          <span className="mr-auto">В зале во весь экран: «{live.shownMedia.name}»</span>
+          <button
+            type="button"
+            onClick={() => commit({ ...live, shownMedia: null })}
+            className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90"
+          >
+            Убрать из зала
+          </button>
+        </div>
       )}
 
       {live.rehearsal && (

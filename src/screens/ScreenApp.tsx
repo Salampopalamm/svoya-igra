@@ -6,6 +6,7 @@ import { GameLogo, HallFrame } from '../components/HallFrame'
 import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
+import { MediaView } from '../components/MediaView'
 import { finalStateOf, remover } from '../final'
 import { formatPoints, stepById, type BranchState } from '../tree'
 import type { QuestionTree } from '../types'
@@ -170,6 +171,16 @@ export default function ScreenApp() {
 
   return (
     <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
+      {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
+      {live.shownMedia && (
+        <div key={live.shownMedia.id} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-10">
+          <VideoContext.Provider
+            value={{ video: { mediaId: live.shownMedia.id, playing: true, time: 0, volume: 1, seq: 1 }, onBlocked: soundBlocked }}
+          >
+            <MediaView media={live.shownMedia} mode="hall" className="max-h-full max-w-full" />
+          </VideoContext.Provider>
+        </div>
+      )}
       <header className="flex items-center justify-between">
         <GameLogo
           theme={game.theme}
