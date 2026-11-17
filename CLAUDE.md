@@ -20,6 +20,7 @@ React + TypeScript + Vite, Tailwind CSS 4 (`@tailwindcss/vite`), Dexie (IndexedD
 - `npm run dev` — сайт для разработки (http://localhost:5173)
 - `npm run build` — проверка типов и сборка; запускай перед каждым коммитом
 - `npm run lint` — oxlint
+- Сайт опубликован: https://salampopalamm.github.io/svoya-igra/ — собирается и выкладывается сам при каждой отправке в master (`.github/workflows/pages.yml`). Пути в сборке относительные (`base: './'` в `vite.config.ts`), поэтому адреса внутри сайта не начинай с `/`. Проверить сборку «как на GitHub» — запуск `pages-preview` в `.claude/launch.json` (http://localhost:4173/svoya-igra/).
 
 ## Архитектура
 
