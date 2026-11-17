@@ -16,17 +16,24 @@ import {
   removeQuestion,
   removeRound,
   addRound,
+  gameProblems,
+  questionProblem,
   roundById,
   sortByValue,
   updateCategory,
   updateQuestion,
   updateRound,
 } from '../game'
+import type { GameProblem } from '../game'
+import { plural } from '../plural'
 import type { Category, Game, Question } from '../types'
 
 // Подпись под номиналом в редакторе: видно, где пусто, а где уже есть картинка или музыка
 function cellNote(question: Question): string | null {
   if (isEmptyQuestion(question)) return 'пусто'
+  const problem = questionProblem(question)
+  if (problem === 'no-answer') return '⚠ нет ответа'
+  if (problem === 'no-question') return '⚠ нет вопроса'
   const kinds = { image: 'картинка', gif: 'GIF', video: 'видео', audio: 'музыка' }
   const media = question.slides.map((s) => s.media && kinds[s.media.type]).filter(Boolean)
   if (media.length > 0) return media.join(' + ')
@@ -42,6 +49,13 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const [roundId, setRoundId] = useState<string | null>(initialGame.rounds[0]?.id ?? null) // какой раунд открыт
 
   const round = roundById(game, roundId)
+  const problems = gameProblems(game)
+
+  // Перейти к недочёту: открыть его раунд и, если есть, сам вопрос
+  function showProblem(problem: GameProblem) {
+    setRoundId(problem.roundId)
+    setSelectedId(problem.questionId ?? null)
+  }
 
   function newRound() {
     const { game: next, round: created } = addRound(game)
@@ -176,6 +190,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                   className={`h-11 rounded-lg px-4 text-sm ${r.id === round.id ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-cell'}`}
                 >
                   {r.title}
+                  {problems.some((p) => p.roundId === r.id) && <span aria-label=", есть недочёты"> ⚠</span>}
                 </button>
               ))}
             </div>
@@ -228,6 +243,8 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
             </div>
           </div>
 
+          <GameCheck game={game} problems={problems} onShow={showProblem} />
+
           <div className="flex flex-col gap-3">
             {round.categories.map((c, i) => (
               <CategoryRow
@@ -266,7 +283,63 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   )
 }
 
-// Строка категории: порядок, название, ячейки вопросов, «+ вопрос», удаление
+// Проверка игры: сколько недочётов и список — клик по строке открывает то, что нужно исправить.
+// Длинный список свёрнут до первых пяти.
+function GameCheck({ game, problems, onShow }: {
+  game: Game
+  problems: GameProblem[]
+  onShow: (problem: GameProblem) => void
+}) {
+  const [expanded, setExpanded] = useState(false)
+  const LIMIT = 5
+
+  if (problems.length === 0) {
+    return <p className="text-sm text-muted">✓ Проверка игры: недочётов нет, можно играть.</p>
+  }
+
+  const roundTitle = (id: string) => game.rounds.find((r) => r.id === id)?.title
+  const categoryTitle = (id?: string) => game.rounds.flatMap((r) => r.categories).find((c) => c.id === id)?.title
+  const shown = expanded ? problems : problems.slice(0, LIMIT)
+
+  return (
+    <section aria-label="Проверка игры" className="flex flex-col gap-2 rounded-xl border border-white p-4">
+      <h2 className="font-semibold">
+        ⚠ Проверка игры: {problems.length} {plural(problems.length, 'недочёт', 'недочёта', 'недочётов')}
+      </h2>
+      <ul className="flex flex-col">
+        {shown.map((p, i) => {
+          // Где недочёт: раунд (если их несколько) и категория
+          const where = [game.rounds.length > 1 ? roundTitle(p.roundId) : null, categoryTitle(p.categoryId)]
+            .filter(Boolean)
+            .join(' · ')
+          return (
+            <li key={i}>
+              <button
+                type="button"
+                onClick={() => onShow(p)}
+                className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left hover:bg-cell"
+              >
+                {where && <span className="text-muted">{where} —</span>}
+                <span>{p.text}</span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+      {problems.length > LIMIT && (
+        <button
+          type="button"
+          onClick={() => setExpanded(!expanded)}
+          className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell"
+        >
+          {expanded ? 'Свернуть' : `Показать все (${problems.length})`}
+        </button>
+      )}
+    </section>
+  )
+}
+
+// Строка категории:порядок, название, ячейки вопросов, «+ вопрос», удаление
 function CategoryRow({ category, columns, twoRows, isFirst, isLast, onRename, onMove, onDelete, onOpenQuestion, onAddQuestion }: {
   category: Category
   columns: number // сколько ячеек в одном ряду

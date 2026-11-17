@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from 'react'
 import { addMediaFile, MAX_FILE_MB } from '../db'
+import { questionProblem } from '../game'
 import type { Content, Question } from '../types'
 import { MediaView } from './MediaView'
 
@@ -23,6 +24,7 @@ export default function QuestionEditor({
   onClose,
 }: Props) {
   const { slides } = question
+  const problem = questionProblem(question) // недочёт: нет ответа или нет вопроса
   const [valueText, setValueText] = useState(String(question.value)) // что набрано в поле «Стоимость»
   const [timerText, setTimerText] = useState(question.timerSec ? String(question.timerSec) : '') // поле «Таймер»
 
@@ -158,6 +160,7 @@ export default function QuestionEditor({
             content={slide}
             textLabel={`Текст слайда ${i + 1}`}
             placeholder={i === 0 ? 'Текст вопроса или описание задания' : 'Подпись к файлу (необязательно)'}
+            warning={i === 0 && problem === 'no-question' ? '⚠ впишите вопрос или добавьте файл' : undefined}
             onChange={(change) => changeSlide(i, change)}
             onMediaRemoved={onMediaRemoved}
           />
@@ -178,6 +181,7 @@ export default function QuestionEditor({
           content={question.answer}
           textLabel="Текст ответа"
           placeholder="Правильный ответ"
+          warning={problem === 'no-answer' ? '⚠ впишите ответ' : undefined}
           onChange={(change) => onChange((q) => ({ ...q, answer: change(q.answer) }))}
           onMediaRemoved={onMediaRemoved}
         />
@@ -224,10 +228,11 @@ function SmallButton({ onClick, disabled, label, children }: {
 }
 
 // Текст + файл: один слайд или ответ. Файл можно выбрать кнопкой или перетащить мышкой.
-function ContentEditor({ content, textLabel, placeholder, onChange, onMediaRemoved }: {
+function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved }: {
   content: Content
   textLabel: string
   placeholder: string
+  warning?: string // недочёт: показывается вместо подсказки, заметнее
   onChange: (change: (c: Content) => Content) => void
   onMediaRemoved: (mediaId: string) => void
 }) {
@@ -275,9 +280,9 @@ function ContentEditor({ content, textLabel, placeholder, onChange, onMediaRemov
         value={content.text ?? ''}
         onChange={(e) => onChange((c) => ({ ...c, text: e.target.value || undefined }))}
         aria-label={textLabel}
-        placeholder={placeholder}
+        placeholder={warning ?? placeholder}
         rows={2}
-        className="w-full rounded-lg border border-line bg-bg px-3 py-2 text-lg text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+        className={`w-full rounded-lg border bg-bg px-3 py-2 text-lg text-white focus:border-white focus:outline-none ${warning ? 'border-white placeholder:font-semibold placeholder:text-white' : 'border-line placeholder:text-muted/60'}`}
       />
 
       {media && (

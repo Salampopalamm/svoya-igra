@@ -1,4 +1,4 @@
-import type { Category, Game, Player, Question, Round, Team } from './types'
+import type { Category, Content, Game, Player, Question, Round, Team } from './types'
 
 // Чистые функции для работы с игрой: берут игру и возвращают новую, старую не меняют.
 
@@ -145,6 +145,59 @@ export function mediaIdsOf(question: Question): string[] {
 // Есть ли в вопросе хоть что-то (текст или файл)
 export function isEmptyQuestion(question: Question): boolean {
   return [...question.slides, question.answer].every((c) => !c.text?.trim() && !c.media)
+}
+
+// ---- Проверка игры ----
+
+// Недочёт вопроса: заполнен наполовину. Пустой вопрос — не недочёт вопроса (о нём скажет проверка категории).
+export type QuestionProblem = 'no-answer' | 'no-question'
+
+const hasContent = (c: Content) => Boolean(c.text?.trim() || c.media)
+
+export function questionProblem(question: Question): QuestionProblem | null {
+  if (isEmptyQuestion(question)) return null
+  if (!question.slides.some(hasContent)) return 'no-question'
+  if (!hasContent(question.answer)) return 'no-answer'
+  return null
+}
+
+export type GameProblem = {
+  roundId: string
+  categoryId?: string
+  questionId?: string // какой вопрос открыть, чтобы исправить
+  text: string
+}
+
+// Все недочёты игры по порядку: раунд → категория → вопросы по стоимости.
+// Одинаковая стоимость в категории — не недочёт: так можно.
+export function gameProblems(game: Game): GameProblem[] {
+  const problems: GameProblem[] = []
+  for (const round of game.rounds) {
+    if (round.categories.length === 0) {
+      problems.push({ roundId: round.id, text: 'в раунде нет ни одной категории' })
+    }
+    for (const category of round.categories) {
+      const at = { roundId: round.id, categoryId: category.id }
+      const questions = sortByValue(category.questions)
+      const empty = questions.filter(isEmptyQuestion)
+
+      if (empty.length === questions.length) {
+        problems.push({ ...at, text: 'в категории нет ни одного заполненного вопроса' })
+        continue
+      }
+      for (const q of questions) {
+        const problem = questionProblem(q)
+        if (problem === 'no-answer') problems.push({ ...at, questionId: q.id, text: `вопрос за ${q.value} без ответа` })
+        if (problem === 'no-question') problems.push({ ...at, questionId: q.id, text: `за ${q.value} есть ответ, но нет вопроса` })
+      }
+      if (empty.length > 0) {
+        const values = empty.map((q) => q.value).join(', ')
+        const text = empty.length === 1 ? `пустая ячейка за ${values}` : `пустые ячейки за ${values}`
+        problems.push({ ...at, questionId: empty[0].id, text: `${text} — заполните или удалите` })
+      }
+    }
+  }
+  return problems
 }
 
 // ---- Команды ----

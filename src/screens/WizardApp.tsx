@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { addMediaFile, deleteMediaIfUnused, saveGame } from '../db'
 import { MAX_QUESTIONS, MAX_TEAMS } from '../game'
+import { plural } from '../plural'
 import {
   clearDraft,
   emptyRow,
@@ -436,15 +437,6 @@ function QuestionsStep({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
 }
 
 const columns = '180px 100px minmax(0, 1fr) 240px 120px 44px'
-
-// «1 вопрос», «2 вопроса», «5 вопросов»
-function plural(n: number, one: string, few: string, many: string) {
-  const mod10 = n % 10
-  const mod100 = n % 100
-  if (mod10 === 1 && mod100 !== 11) return one
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few
-  return many
-}
 
 // ---- Шаг 3: команды ----
 
