@@ -7,6 +7,7 @@ import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
+import { usePreload } from '../preload'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
@@ -17,6 +18,9 @@ export default function ScreenApp() {
   const [started, setStarted] = useState(false)
   const channelRef = useRef<BroadcastChannel | null>(null)
   const startedRef = useRef(started)
+  // Файлы игры загружаем заранее, ещё на заставке; сколько готово — сообщаем пульту
+  const media = usePreload(live?.game)
+  const mediaRef = useRef(media)
 
   useEffect(() => {
     const channel = new BroadcastChannel(CHANNEL)
@@ -26,6 +30,8 @@ export default function ScreenApp() {
       if (e.data.type !== 'state') return
       setLive(e.data.state)
       report(startedRef.current ? 'ready' : 'waiting-click') // пульт мог открыться позже зала — напоминаем о себе
+      const m = mediaRef.current
+      if (m) channel.postMessage({ type: 'hall-media', done: m.done, total: m.total } satisfies Message)
     }
     channel.postMessage({ type: 'hello' } satisfies Message) // попросить у пульта текущее состояние
     const onClose = () => report('closed')
@@ -36,6 +42,11 @@ export default function ScreenApp() {
       channelRef.current = null
     }
   }, [])
+
+  useEffect(() => {
+    mediaRef.current = media
+    if (media) channelRef.current?.postMessage({ type: 'hall-media', done: media.done, total: media.total } satisfies Message)
+  }, [media])
 
   function start() {
     setStarted(true)

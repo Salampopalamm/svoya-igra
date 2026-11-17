@@ -2,6 +2,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Board from '../components/Board'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
+import MediaStatus from '../components/MediaStatus'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
@@ -24,6 +25,7 @@ import { mergeProgress, nextTeamId, roundById } from '../game'
 import type { Game, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
+import { usePreload } from '../preload'
 
 // Свежая партия: игра из хранилища, всё по нулям
 function freshState(game: Game): LiveState {
@@ -117,6 +119,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
   const [preview, setPreview] = useState<CellRef | null>(null) // только на пульте
   const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
+  const [hallMedia, setHallMedia] = useState<{ done: number; total: number } | null>(null) // файлы, загруженные в зале
   const [settingsOpen, setSettingsOpen] = useState(false) // открыта панель настроек (⚙)
   const { pinned, toggle: togglePin } = usePinnedControls() // кнопки на панели ведущего
 
@@ -125,6 +128,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
   const round = roundById(game, live.roundId)
+  const media = usePreload(game) // файлы игры заранее, и проверка, что все открываются
 
   // Канал связи: экран зала при открытии спрашивает «hello» — отвечаем текущим состоянием
   useEffect(() => {
@@ -133,6 +137,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     channel.onmessage = (e: MessageEvent<Message>) => {
       if (e.data.type === 'hello') channel.postMessage({ type: 'state', state: liveRef.current } satisfies Message)
       if (e.data.type === 'hall') setHallStatus(e.data.status)
+      if (e.data.type === 'hall-media') setHallMedia({ done: e.data.done, total: e.data.total })
     }
     return () => {
       channel.close()
@@ -551,6 +556,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
+      <MediaStatus
+        own={media}
+        hall={hallStatus && hallStatus !== 'closed' ? hallMedia : null}
+        gameId={game.id}
+        quiet={!!current}
+      />
 
       {hallStatus === 'waiting-click' && (
         <div role="status" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">

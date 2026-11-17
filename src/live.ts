@@ -69,6 +69,7 @@ export type Message =
   | { type: 'state'; state: LiveState } // пульт → зал
   | { type: 'hello' } // зал → пульт: «пришли состояние»
   | { type: 'hall'; status: HallStatus } // зал → пульт: ждёт клика / готов (звук разрешён) / закрыт
+  | { type: 'hall-media'; done: number; total: number } // зал → пульт: сколько файлов игры уже загружено
 
 // Канал связи между окнами одного браузера
 export const CHANNEL = 'svoya-igra'

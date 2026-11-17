@@ -1,4 +1,4 @@
-import type { Category, Content, Game, Player, Question, Round, Team } from './types'
+import type { Category, Content, Game, MediaRef, Player, Question, Round, Team } from './types'
 
 // Чистые функции для работы с игрой: берут игру и возвращают новую, старую не меняют.
 
@@ -323,16 +323,24 @@ export function distributeRandomly(game: Game, random: () => number = Math.rando
   return { ...game, players: game.players.map((p) => (assigned.has(p.id) ? { ...p, teamId: assigned.get(p.id) } : p)) }
 }
 
-// id всех файлов игры: в вопросах и фото участников
-export function allMediaIds(game: Game): string[] {
+// Все файлы игры: в вопросах, фото участников, значки команд, оформление (могут повторяться)
+export function allMediaRefs(game: Game): MediaRef[] {
   const { logo, background, sounds } = game.theme
-  const themeMedia = [logo, background, sounds.correct, sounds.wrong].flatMap((m) => (m ? [m.id] : []))
+  const contents = allQuestions(game).flatMap((q) => [...q.slides, q.answer])
   return [
-    ...allQuestions(game).flatMap(mediaIdsOf),
-    ...game.players.flatMap((p) => (p.photo ? [p.photo.id] : [])),
-    ...game.teams.flatMap((t) => (t.logo ? [t.logo.id] : [])),
-    ...themeMedia,
-  ]
+    ...contents.map((c) => c.media),
+    ...game.players.map((p) => p.photo),
+    ...game.teams.map((t) => t.logo),
+    logo,
+    background,
+    sounds.correct,
+    sounds.wrong,
+  ].filter((m): m is MediaRef => !!m)
+}
+
+// id всех файлов игры
+export function allMediaIds(game: Game): string[] {
+  return allMediaRefs(game).map((m) => m.id)
 }
 
 // Копия игры с новым id и названием «… (копия)». Файлы общие: удаляются, только когда не нужны ни одной игре.
