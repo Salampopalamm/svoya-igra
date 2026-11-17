@@ -36,7 +36,9 @@ import { VideoContext, type VideoCommand } from '../videoControl'
 import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
 import { mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
-import type { Game, Theme } from '../types'
+import { chooseOption, startBranch } from '../tree'
+import { BranchBody, BranchControls } from '../components/BranchHost'
+import type { Game, Question, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { usePreload } from '../preload'
@@ -106,6 +108,19 @@ function withClosed(s: LiveState): LiveState {
     turnTeamId: nextTeamId(s.game, s.turnTeamId),
     timer: null,
     video: null,
+    branch: null,
+  }
+}
+
+// Только что открытый вопрос: первый слайд, ответ скрыт, таймер ждёт запуска, ветвящийся — на первом шаге
+function openedQuestion(question: Question | undefined): Partial<LiveState> {
+  return {
+    slideIndex: 0,
+    showAnswer: false,
+    triedTeamIds: [],
+    timer: newTimer(question?.timerSec),
+    video: null,
+    branch: question?.tree ? startBranch(question.tree) : null,
   }
 }
 
@@ -206,14 +221,22 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
     // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
     const { question } = find({ categoryId, questionId })
+    commit({ ...live, ...openedQuestion(question), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
+  }
+
+  // Ветвящийся вопрос: ведущий нажал вариант. Баллы — сразу или одной суммой в конце ветки, следующий шаг.
+  function chooseBranchOption(option: number) {
+    const tree = currentCell.question?.tree
+    if (!tree || !live.branch || live.branch.done || !answeringTeamId) return
+    const node = tree.nodes.find((n) => n.id === live.branch!.nodeId)
+    const points = node?.options[option]?.points ?? 0
+    const branch = chooseOption(tree, live.branch, option)
+    const gained = tree.scoring === 'per-step' ? points : branch.done ? branch.earned : 0
     commit({
-      ...live,
-      current: { categoryId, questionId },
-      slideIndex: 0,
+      ...withScore(live, answeringTeamId, gained),
+      branch,
       showAnswer: false,
-      answeringTeamId: turnTeamId,
-      triedTeamIds: [],
-      timer: newTimer(question?.timerSec),
+      timer: newTimer(currentCell.question?.timerSec),
       video: null,
     })
   }
@@ -231,13 +254,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
   function handleCorrect(teamId: string) {
-    if (!currentCell.question || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
-    if (!currentCell.question || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
   }
 
@@ -437,14 +460,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       ?.questions.find((q) => q.id === cell.questionId)
     commit({
       ...live,
+      ...openedQuestion(question),
       roundId: cell.roundId,
       current: { categoryId: cell.categoryId, questionId: cell.questionId },
-      slideIndex: 0,
-      showAnswer: false,
       answeringTeamId: turnTeamId,
-      triedTeamIds: [],
-      timer: newTimer(question?.timerSec),
-      video: null,
     })
   }
 
@@ -503,8 +522,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         e.preventDefault()
         if (!showAnswer && !isFinal) showAnswerInHall() // в финале ответ — вместе с итогами
       }
-      // + / − — «Верно» / «Неверно» для выбранной команды
-      if (answeringTeamId) {
+      // + / − — «Верно» / «Неверно» для выбранной команды (в дереве по правильности — варианты «Верно / Неверно»)
+      if (answeringTeamId && currentCell.question?.tree) {
+        if (currentCell.question.tree.branchBy === 'correctness') {
+          if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') chooseBranchOption(0)
+          if (e.key === '-' || e.code === 'NumpadSubtract') chooseBranchOption(1)
+        }
+      } else if (answeringTeamId) {
         if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') handleCorrect(answeringTeamId)
         if (e.key === '-' || e.code === 'NumpadSubtract') handleWrong(answeringTeamId)
       }
@@ -782,6 +806,31 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
               if (game.theme.sounds.enabled) playTimeUp()
             }}
             final={final ? <FinalAnswers game={game} final={final} onMark={finalMark} onReveal={finalReveal} /> : undefined}
+            branch={
+              currentCell.question.tree && live.branch
+                ? {
+                    body: (
+                      <BranchBody
+                        tree={currentCell.question.tree}
+                        branch={live.branch}
+                        showAnswer={showAnswer}
+                        onShowAnswer={showAnswerInHall}
+                      />
+                    ),
+                    bottom: (
+                      <BranchControls
+                        tree={currentCell.question.tree}
+                        branch={live.branch}
+                        teams={game.teams}
+                        answeringTeamId={answeringTeamId}
+                        onSelectTeam={selectTeam}
+                        onChoose={chooseBranchOption}
+                        onClose={closeQuestion}
+                      />
+                    ),
+                  }
+                : undefined
+            }
           />
         </VideoContext.Provider>
       ) : final ? (

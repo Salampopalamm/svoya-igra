@@ -35,6 +35,11 @@ function cellNote(question: Question): string | null {
   const problem = questionProblem(question)
   if (problem === 'no-answer') return '⚠ нет ответа'
   if (problem === 'no-question') return '⚠ нет вопроса'
+  if (problem === 'tree') return '⚠ дерево'
+  if (question.tree) {
+    const steps = question.tree.nodes.length
+    return `дерево · ${steps} ${plural(steps, 'шаг', 'шага', 'шагов')}`
+  }
   const kinds = { image: 'картинка', gif: 'GIF', video: 'видео', audio: 'музыка' }
   const media = question.slides.map((s) => s.media && kinds[s.media.type]).filter(Boolean)
   if (media.length > 0) return media.join(' + ')

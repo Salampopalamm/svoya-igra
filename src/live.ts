@@ -1,3 +1,4 @@
+import type { BranchState } from './tree'
 import type { Game } from './types'
 
 // «Живое» состояние игры, которое пульт передаёт экрану зала.
@@ -19,6 +20,7 @@ export type LiveState = {
   video: VideoState | null // видео в зале, которым управляет ведущий (null — ни одно не запускали)
   final?: FinalState | null // ход финального раунда (функции — в final.ts); в старых сохранениях его нет
   rehearsal?: boolean // идёт репетиция: в зале метка, а после неё партия вернётся как была
+  branch?: BranchState | null // открыт ветвящийся вопрос: на каком он шаге (функции — в tree.ts)
 }
 
 // Финальный раунд: убирание тем → ставки → вопрос → итоги.

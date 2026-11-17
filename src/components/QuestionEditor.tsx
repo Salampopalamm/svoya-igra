@@ -1,8 +1,9 @@
-import { useState, type ReactNode } from 'react'
-import { addMediaFile, MAX_FILE_MB } from '../db'
+import { useState } from 'react'
 import { questionProblem } from '../game'
+import { newTree, treeContents } from '../tree'
 import type { Content, Question } from '../types'
-import { MediaView } from './MediaView'
+import { ContentEditor, SmallButton } from './ContentEditor'
+import TreeEditor from './TreeEditor'
 
 type Props = {
   categoryTitle: string
@@ -61,6 +62,19 @@ export default function QuestionEditor({
     const media = slides[index]?.media
     onChange((q) => (q.slides.length > 1 ? { ...q, slides: q.slides.filter((_, i) => i !== index) } : q))
     if (media) onMediaRemoved(media.id)
+  }
+
+  // Обычный вопрос ↔ ветвящийся. Дерево начинается с того, что уже есть в вопросе (первый слайд и ответ).
+  function setBranching(on: boolean) {
+    if (on === !!question.tree) return
+    if (on) {
+      onChange((q) => ({ ...q, tree: newTree(q) }))
+      return
+    }
+    const tree = question.tree!
+    if (tree.nodes.length > 1 && !window.confirm(`Убрать дерево? Его шаги (${tree.nodes.length}) удалятся, останутся слайды и ответ вопроса. Это нельзя отменить.`)) return
+    for (const c of treeContents(tree)) if (c.media) onMediaRemoved(c.media.id)
+    onChange((q) => ({ ...q, tree: undefined }))
   }
 
   // Поменять слайд местами с соседним: delta = -1 — выше, +1 — ниже
@@ -136,61 +150,86 @@ export default function QuestionEditor({
         </div>
       </div>
 
-      <p className="text-sm text-muted">
-        Вопрос показывается слайдами по порядку. Обычно на первом — задание, на втором — картинка или музыка. Ведущий
-        листает слайды стрелками ← / →. Всё сохраняется само.
-      </p>
+      <div role="group" aria-label="Вид вопроса" className="flex flex-wrap items-center gap-1.5">
+        {[false, true].map((branching) => (
+          <button
+            key={String(branching)}
+            type="button"
+            onClick={() => setBranching(branching)}
+            aria-pressed={branching === !!question.tree}
+            className={`h-11 rounded-lg px-4 text-sm ${branching === !!question.tree ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`}
+          >
+            {branching ? 'Ветвящийся вопрос (дерево)' : 'Обычный вопрос'}
+          </button>
+        ))}
+      </div>
 
-      {slides.map((slide, i) => (
-        <section key={i} className="flex flex-col gap-3 rounded-xl border border-line bg-bg p-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="mr-auto text-sm font-semibold tracking-widest text-muted">
-              СЛАЙД {i + 1} ИЗ {slides.length}
-            </h3>
-            <SmallButton onClick={() => moveSlide(i, -1)} disabled={i === 0} label={`Поднять слайд ${i + 1} выше`}>
-              ↑
-            </SmallButton>
-            <SmallButton
-              onClick={() => moveSlide(i, 1)}
-              disabled={i === slides.length - 1}
-              label={`Опустить слайд ${i + 1} ниже`}
-            >
-              ↓
-            </SmallButton>
-            <SmallButton onClick={() => removeSlide(i)} disabled={slides.length === 1} label={`Удалить слайд ${i + 1}`}>
-              Удалить слайд
-            </SmallButton>
-          </div>
-          <ContentEditor
-            content={slide}
-            textLabel={`Текст слайда ${i + 1}`}
-            placeholder={i === 0 ? 'Текст вопроса или описание задания' : 'Подпись к файлу (необязательно)'}
-            warning={i === 0 && problem === 'no-question' ? '⚠ впишите вопрос или добавьте файл' : undefined}
-            onChange={(change) => changeSlide(i, change)}
-            onMediaRemoved={onMediaRemoved}
-          />
-        </section>
-      ))}
-
-      <button
-        type="button"
-        onClick={addSlide}
-        className="h-11 self-start rounded-lg border border-white px-5 font-semibold hover:bg-white hover:text-black"
-      >
-        + Добавить слайд
-      </button>
-
-      <section className="flex flex-col gap-3 rounded-xl border-2 border-dashed border-muted p-4">
-        <h3 className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ · ЗАЛ УВИДИТ ЕГО ПО КНОПКЕ ВЕДУЩЕГО</h3>
-        <ContentEditor
-          content={question.answer}
-          textLabel="Текст ответа"
-          placeholder="Правильный ответ"
-          warning={problem === 'no-answer' ? '⚠ впишите ответ' : undefined}
-          onChange={(change) => onChange((q) => ({ ...q, answer: change(q.answer) }))}
+      {question.tree ? (
+        <TreeEditor
+          tree={question.tree}
+          value={question.value}
+          onChange={(change) => onChange((q) => (q.tree ? { ...q, tree: change(q.tree) } : q))}
           onMediaRemoved={onMediaRemoved}
         />
-      </section>
+      ) : (
+        <>
+          <p className="text-sm text-muted">
+            Вопрос показывается слайдами по порядку. Обычно на первом — задание, на втором — картинка или музыка. Ведущий
+            листает слайды стрелками ← / →. Всё сохраняется само.
+          </p>
+
+          {slides.map((slide, i) => (
+            <section key={i} className="flex flex-col gap-3 rounded-xl border border-line bg-bg p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="mr-auto text-sm font-semibold tracking-widest text-muted">
+                  СЛАЙД {i + 1} ИЗ {slides.length}
+                </h3>
+                <SmallButton onClick={() => moveSlide(i, -1)} disabled={i === 0} label={`Поднять слайд ${i + 1} выше`}>
+                  ↑
+                </SmallButton>
+                <SmallButton
+                  onClick={() => moveSlide(i, 1)}
+                  disabled={i === slides.length - 1}
+                  label={`Опустить слайд ${i + 1} ниже`}
+                >
+                  ↓
+                </SmallButton>
+                <SmallButton onClick={() => removeSlide(i)} disabled={slides.length === 1} label={`Удалить слайд ${i + 1}`}>
+                  Удалить слайд
+                </SmallButton>
+              </div>
+              <ContentEditor
+                content={slide}
+                textLabel={`Текст слайда ${i + 1}`}
+                placeholder={i === 0 ? 'Текст вопроса или описание задания' : 'Подпись к файлу (необязательно)'}
+                warning={i === 0 && problem === 'no-question' ? '⚠ впишите вопрос или добавьте файл' : undefined}
+                onChange={(change) => changeSlide(i, change)}
+                onMediaRemoved={onMediaRemoved}
+              />
+            </section>
+          ))}
+
+          <button
+            type="button"
+            onClick={addSlide}
+            className="h-11 self-start rounded-lg border border-white px-5 font-semibold hover:bg-white hover:text-black"
+          >
+            + Добавить слайд
+          </button>
+
+          <section className="flex flex-col gap-3 rounded-xl border-2 border-dashed border-muted p-4">
+            <h3 className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ · ЗАЛ УВИДИТ ЕГО ПО КНОПКЕ ВЕДУЩЕГО</h3>
+            <ContentEditor
+              content={question.answer}
+              textLabel="Текст ответа"
+              placeholder="Правильный ответ"
+              warning={problem === 'no-answer' ? '⚠ впишите ответ' : undefined}
+              onChange={(change) => onChange((q) => ({ ...q, answer: change(q.answer) }))}
+              onMediaRemoved={onMediaRemoved}
+            />
+          </section>
+        </>
+      )}
 
       <section className="flex flex-col gap-3 rounded-xl border border-line p-4">
         <h3 className="text-sm font-semibold tracking-widest text-muted">ЗАМЕТКА ВЕДУЩЕМУ · ЗАЛ НЕ УВИДИТ НИКОГДА</h3>
@@ -212,118 +251,3 @@ export default function QuestionEditor({
 
 const MAX_TIMER_SEC = 600 // таймер — до 10 минут
 const TIMER_PRESETS = [15, 30, 60]
-
-function SmallButton({ onClick, disabled, label, children }: {
-  onClick: () => void
-  disabled?: boolean
-  label: string
-  children: ReactNode
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      aria-label={label}
-      className="h-11 min-w-11 rounded-lg border border-line px-3 text-sm hover:bg-cell disabled:opacity-40"
-    >
-      {children}
-    </button>
-  )
-}
-
-// Текст + файл: один слайд или ответ. Файл можно выбрать кнопкой или перетащить мышкой.
-function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved }: {
-  content: Content
-  textLabel: string
-  placeholder: string
-  warning?: string // недочёт: показывается вместо подсказки, заметнее
-  onChange: (change: (c: Content) => Content) => void
-  onMediaRemoved: (mediaId: string) => void
-}) {
-  const [busy, setBusy] = useState(false) // файл сейчас сохраняется
-  const [error, setError] = useState<string | null>(null)
-  const [dragOver, setDragOver] = useState(false)
-  const media = content.media
-
-  async function attach(file: File | undefined) {
-    if (!file) return
-    setError(null)
-    setBusy(true)
-    try {
-      const ref = await addMediaFile(file)
-      onChange((c) => ({ ...c, media: ref }))
-      if (media) onMediaRemoved(media.id) // старый файл заменили новым
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Не получилось сохранить файл.')
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  function detach() {
-    if (!media) return
-    onChange((c) => ({ text: c.text }))
-    onMediaRemoved(media.id)
-  }
-
-  return (
-    <div
-      onDragOver={(e) => {
-        e.preventDefault()
-        setDragOver(true)
-      }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={(e) => {
-        e.preventDefault()
-        setDragOver(false)
-        void attach(e.dataTransfer.files[0])
-      }}
-      className={`flex flex-col gap-3 rounded-lg ${dragOver ? 'outline-2 outline-offset-4 outline-white outline-dashed' : ''}`}
-    >
-      <textarea
-        value={content.text ?? ''}
-        onChange={(e) => onChange((c) => ({ ...c, text: e.target.value || undefined }))}
-        aria-label={textLabel}
-        placeholder={warning ?? placeholder}
-        rows={2}
-        className={`w-full rounded-lg border bg-bg px-3 py-2 text-lg text-white focus:border-white focus:outline-none ${warning ? 'border-white placeholder:font-semibold placeholder:text-white' : 'border-line placeholder:text-muted/60'}`}
-      />
-
-      {media && (
-        <div className="flex flex-col gap-2">
-          <MediaView media={media} mode="editor" className="max-h-64 self-start" />
-          <span className="text-sm text-muted">{media.name}</span>
-        </div>
-      )}
-
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex h-11 cursor-pointer items-center rounded-lg border border-line px-4 text-sm hover:bg-cell focus-within:border-white">
-          {busy ? 'Сохраняю файл…' : media ? 'Заменить файл' : '+ Картинка, музыка или видео'}
-          <input
-            type="file"
-            accept="image/*,audio/*,video/*"
-            disabled={busy}
-            className="sr-only"
-            onChange={(e) => {
-              void attach(e.target.files?.[0])
-              e.target.value = '' // чтобы можно было выбрать тот же файл ещё раз
-            }}
-          />
-        </label>
-        {media && (
-          <button type="button" onClick={detach} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
-            Убрать файл
-          </button>
-        )}
-        {!media && <span className="text-sm text-muted">или перетащите файл сюда · до {MAX_FILE_MB} МБ</span>}
-      </div>
-
-      {error && (
-        <p role="alert" className="rounded-lg border border-white px-3 py-2 text-sm">
-          {error}
-        </p>
-      )}
-    </div>
-  )
-}

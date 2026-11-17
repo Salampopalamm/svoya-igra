@@ -1,3 +1,4 @@
+import { treeContents, treeProblems } from './tree'
 import type { Category, Content, Game, MediaRef, Player, Question, Round, Team } from './types'
 
 // Чистые функции для работы с игрой: берут игру и возвращают новую, старую не меняют.
@@ -137,25 +138,32 @@ export function sortByValue(questions: Question[]): Question[] {
   return [...questions].sort((a, b) => a.value - b.value)
 }
 
+// Всё содержимое вопроса: слайды, ответ и шаги дерева (если вопрос ветвящийся)
+export function questionContents(question: Question): Content[] {
+  return [...question.slides, question.answer, ...treeContents(question.tree)]
+}
+
 // id всех файлов вопроса — чтобы удалить их из хранилища вместе с вопросом
 export function mediaIdsOf(question: Question): string[] {
-  return [...question.slides, question.answer].flatMap((c) => (c.media ? [c.media.id] : []))
+  return questionContents(question).flatMap((c) => (c.media ? [c.media.id] : []))
 }
 
 // Есть ли в вопросе хоть что-то (текст или файл)
 export function isEmptyQuestion(question: Question): boolean {
-  return [...question.slides, question.answer].every((c) => !c.text?.trim() && !c.media)
+  return questionContents(question).every((c) => !c.text?.trim() && !c.media)
 }
 
 // ---- Проверка игры ----
 
 // Недочёт вопроса: заполнен наполовину. Пустой вопрос — не недочёт вопроса (о нём скажет проверка категории).
-export type QuestionProblem = 'no-answer' | 'no-question'
+export type QuestionProblem = 'no-answer' | 'no-question' | 'tree'
 
 const hasContent = (c: Content) => Boolean(c.text?.trim() || c.media)
 
 export function questionProblem(question: Question): QuestionProblem | null {
   if (isEmptyQuestion(question)) return null
+  // Ветвящийся вопрос: слайды и ответ не нужны, проверяем само дерево
+  if (question.tree) return treeProblems(question.tree).length > 0 ? 'tree' : null
   if (!question.slides.some(hasContent)) return 'no-question'
   if (!hasContent(question.answer)) return 'no-answer'
   return null
@@ -189,6 +197,9 @@ export function gameProblems(game: Game): GameProblem[] {
         const problem = questionProblem(q)
         if (problem === 'no-answer') problems.push({ ...at, questionId: q.id, text: `вопрос за ${q.value} без ответа` })
         if (problem === 'no-question') problems.push({ ...at, questionId: q.id, text: `за ${q.value} есть ответ, но нет вопроса` })
+        if (problem === 'tree' && q.tree) {
+          problems.push({ ...at, questionId: q.id, text: `за ${q.value}, дерево: ${treeProblems(q.tree)[0].text}` })
+        }
       }
       if (empty.length > 0) {
         const values = empty.map((q) => q.value).join(', ')
@@ -326,7 +337,7 @@ export function distributeRandomly(game: Game, random: () => number = Math.rando
 // Все файлы игры: в вопросах, фото участников, значки команд, оформление (могут повторяться)
 export function allMediaRefs(game: Game): MediaRef[] {
   const { logo, background, sounds } = game.theme
-  const contents = allQuestions(game).flatMap((q) => [...q.slides, q.answer])
+  const contents = allQuestions(game).flatMap(questionContents)
   return [
     ...contents.map((c) => c.media),
     ...game.players.map((p) => p.photo),

@@ -7,6 +7,7 @@ import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
 import { finalStateOf, remover } from '../final'
+import { formatPoints, stepById } from '../tree'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
@@ -117,6 +118,18 @@ export default function ScreenApp() {
   const activeLabel = final ? 'УБИРАЕТ' : questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
   const outTeamIds = questionOpen ? triedTeamIds : []
 
+  // Ветвящийся вопрос: какой шаг показывать, его варианты и (в конце) итог ветки
+  const branchNode = question?.tree && live.branch ? stepById(question.tree, live.branch.nodeId) : undefined
+  const step =
+    question?.tree && live.branch && branchNode
+      ? {
+          content: branchNode.content,
+          answer: branchNode.answer,
+          options: question.tree.branchBy === 'choice' && !live.branch.done ? branchNode.options.map((o) => o.label) : [],
+          summary: live.branch.done && answeringTeam ? `${answeringTeam.name}: ${formatPoints(live.branch.earned)}` : undefined,
+        }
+      : undefined
+
   const content =
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
@@ -127,6 +140,7 @@ export default function ScreenApp() {
           slideIndex={slideIndex}
           showAnswer={showAnswer}
           answeringTeam={final ? undefined : answeringTeam}
+          step={step}
           stealing={stealing}
           canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
           timer={live.timer ?? null}
@@ -139,7 +153,10 @@ export default function ScreenApp() {
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
-    <div key={question?.id ?? (final ? `final-${final.phase}` : `board-${round.id}`)} className="anim-appear flex min-h-0 flex-1 flex-col">
+    <div
+      key={question ? `${question.id}-${live.branch?.nodeId ?? ''}` : final ? `final-${final.phase}` : `board-${round.id}`}
+      className="anim-appear flex min-h-0 flex-1 flex-col"
+    >
       {content}
     </div>
   )
