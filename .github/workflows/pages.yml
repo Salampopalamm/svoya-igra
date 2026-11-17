@@ -1,0 +1,43 @@
+# Публикация сайта на GitHub Pages: при каждой отправке в master GitHub сам собирает сайт
+# (npm run build) и выкладывает папку dist по адресу https://salampopalamm.github.io/svoya-igra/
+name: Публикация сайта
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: # кнопка «Run workflow» на GitHub — опубликовать вручную
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Две публикации сразу не идут: новая отменяет недоделанную старую
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
