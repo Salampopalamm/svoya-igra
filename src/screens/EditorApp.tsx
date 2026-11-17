@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import HallPreview from '../components/HallPreview'
 import QuestionEditor from '../components/QuestionEditor'
 import ThemeEditor from '../components/ThemeEditor'
 import { useSavedGame } from '../useSavedGame'
@@ -47,6 +48,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const { game, change, saved, dropMedia } = useSavedGame(initialGame)
   const [selectedId, setSelectedId] = useState<string | null>(null) // какой вопрос открыт
   const [roundId, setRoundId] = useState<string | null>(initialGame.rounds[0]?.id ?? null) // какой раунд открыт
+  const [previewing, setPreviewing] = useState(false) // открыт предпросмотр вопроса «как в зале»
 
   const round = roundById(game, roundId)
   const problems = gameProblems(game)
@@ -175,6 +177,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           onMediaRemoved={(id) => dropMedia(id)}
           onDelete={() => deleteQuestion(question)}
           onClose={() => setSelectedId(null)}
+          onPreview={() => setPreviewing(true)}
         />
       ) : (
         <>
@@ -278,6 +281,17 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
             onMediaRemoved={(id) => dropMedia(id)}
           />
         </>
+      )}
+
+      {previewing && category && question && (
+        <HallPreview
+          theme={game.theme}
+          gameTitle={game.title}
+          roundTitle={round.title}
+          categoryTitle={category.title}
+          question={question}
+          onClose={() => setPreviewing(false)}
+        />
       )}
     </div>
   )

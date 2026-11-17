@@ -8,6 +8,7 @@ export type VideoControl = {
   video: VideoState | null
   send?: (mediaId: string, command: VideoCommand) => void
   onBlocked?: () => void // в зале: браузер не дал включить звук
+  freePlay?: boolean // предпросмотр в редакторе: видео «как в зале», но с обычными кнопками плеера
 }
 
 export const VideoContext = createContext<VideoControl>({ video: null })

@@ -48,9 +48,19 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
 // Видео в зале: без кнопок, слушается пульта
 function HallVideo({ media, url, className }: { media: MediaRef; url: string; className: string }) {
   const ref = useRef<HTMLVideoElement>(null)
-  const { video, onBlocked } = useVideoControl()
+  const { video, onBlocked, freePlay } = useVideoControl()
   useFollowVideo(ref, video?.mediaId === media.id ? video : null, onBlocked)
-  return <video data-media ref={ref} src={url} playsInline preload="auto" className={`rounded-lg ${className}`} />
+  return (
+    <video
+      data-media
+      ref={ref}
+      src={url}
+      playsInline
+      preload="auto"
+      controls={freePlay}
+      className={`rounded-lg ${className}`}
+    />
+  )
 }
 
 // Видео на пульте: копия без звука (видно, что сейчас в зале) и управление залом

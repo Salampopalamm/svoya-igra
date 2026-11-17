@@ -12,6 +12,7 @@ type Props = {
   onMediaRemoved: (mediaId: string) => void // файл убрали из вопроса — его можно удалить из хранилища
   onDelete: () => void
   onClose: () => void
+  onPreview: () => void // показать вопрос так, как его увидит зал
 }
 
 // Редактор вопроса: стоимость, слайды (текст и файл на каждом) и ответ. Сохраняется сам после каждой правки.
@@ -22,6 +23,7 @@ export default function QuestionEditor({
   onMediaRemoved,
   onDelete,
   onClose,
+  onPreview,
 }: Props) {
   const { slides } = question
   const problem = questionProblem(question) // недочёт: нет ответа или нет вопроса
@@ -122,6 +124,9 @@ export default function QuestionEditor({
           </div>
         </div>
         <div className="flex gap-2">
+          <button type="button" onClick={onPreview} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
+            Предпросмотр
+          </button>
           <button type="button" onClick={onDelete} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
             Удалить вопрос
           </button>
