@@ -18,6 +18,7 @@ import {
   removeRound,
   addRound,
   gameProblems,
+  hiddenQuestions,
   questionProblem,
   roundById,
   sortByValue,
@@ -31,6 +32,11 @@ import type { Category, Game, Question } from '../types'
 
 // Подпись под номиналом в редакторе: видно, где пусто, а где уже есть картинка или музыка
 function cellNote(question: Question): string | null {
+  const note = baseNote(question)
+  return question.hidden ? `🔒 скрыт${note ? ` · ${note}` : ''}` : note
+}
+
+function baseNote(question: Question): string | null {
   if (isEmptyQuestion(question)) return 'пусто'
   const problem = questionProblem(question)
   if (problem === 'no-answer') return '⚠ нет ответа'
@@ -205,6 +211,8 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           onDelete={() => deleteQuestion(question)}
           onClose={() => setSelectedId(null)}
           onPreview={() => setPreviewing(true)}
+          hiddenQuestions={hiddenQuestions(game).filter((h) => h.id !== question.id)}
+          canHide={!isFinal}
         />
       ) : (
         <>

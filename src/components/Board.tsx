@@ -6,10 +6,12 @@ type Props = {
   round: Round
   interactive?: boolean // false — экран зала: ячейки не нажимаются
   onCellClick?: (categoryId: string, questionId: string) => void
+  unlockedIds?: string[] // скрытые вопросы, которые уже открыли (деревом или ведущим)
+  onLockedClick?: (categoryId: string, questionId: string) => void // пульт: ведущий нажал скрытую ячейку
 }
 
 // Табло: категории строками, номиналы справа от названия категории.
-export default function Board({ round, interactive = true, onCellClick }: Props) {
+export default function Board({ round, interactive = true, onCellClick, unlockedIds = [], onLockedClick }: Props) {
   // Ячейки стоят по порядку, а не по цене: в строке могут быть и 100…800, и восемь «400».
   // Колонок столько, сколько вопросов в самой длинной категории.
   const columns = Math.max(0, ...round.categories.map((c) => c.questions.length))
@@ -33,14 +35,39 @@ export default function Board({ round, interactive = true, onCellClick }: Props)
             const question = sortByValue(category.questions)[i]
 
             // Сыгранный или отсутствующий вопрос — пустая пунктирная ячейка
-            if (!question || question.played || question.hidden) {
+            if (!question || question.played) {
               return <div key={i} className="min-h-20 rounded-xl border-2 border-dashed border-line" />
             }
             const value = question.value
+            const locked = question.hidden && !unlockedIds.includes(question.id)
+            const justUnlocked = question.hidden && !locked // открытый скрытый вопрос подсвечен акцентом
+
+            // Скрытый вопрос: в зале — «?» без цены, на пульте — цена и «скрыт», ведущий может открыть
+            if (locked) {
+              const lockedClass = '@container flex min-h-20 flex-col items-center justify-center rounded-xl border-2 border-line bg-cell font-display'
+              if (!interactive) {
+                return (
+                  <div key={question.id} className={lockedClass} aria-label="Скрытый вопрос">
+                    <span className="text-[min(1.875rem,20cqw)] text-muted">?</span>
+                  </div>
+                )
+              }
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => onLockedClick?.(category.id, question.id)}
+                  title="Скрытый вопрос: нажмите, чтобы открыть его"
+                  className={`${lockedClass} text-muted transition hover:border-white hover:text-white`}
+                >
+                  <span className="text-[min(1.5rem,16cqw)]">{value}</span>
+                  <span className="font-sans text-xs">🔒 скрыт</span>
+                </button>
+              )
+            }
 
             // @container + cqw: номинал уменьшается под ширину ячейки — «1000» помещается и при 10 колонках
-            const cellClass =
-              '@container flex min-h-20 items-center justify-center rounded-xl border-2 border-white font-display'
+            const cellClass = `@container flex min-h-20 items-center justify-center rounded-xl border-2 font-display ${justUnlocked ? 'border-accent bg-accent text-on-accent' : 'border-white'}`
             const label = <span className="text-[min(1.875rem,20cqw)]">{value}</span>
 
             if (!interactive) {

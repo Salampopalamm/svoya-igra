@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { questionProblem } from '../game'
+import { questionProblem, type HiddenChoice } from '../game'
 import { newTree, treeContents } from '../tree'
 import type { Content, Question } from '../types'
 import { ContentEditor, SmallButton } from './ContentEditor'
@@ -14,6 +14,8 @@ type Props = {
   onDelete: () => void
   onClose: () => void
   onPreview: () => void // показать вопрос так, как его увидит зал
+  hiddenQuestions: HiddenChoice[] // скрытые вопросы игры — их может открыть вариант дерева
+  canHide: boolean // в финале скрытых вопросов нет
 }
 
 // Редактор вопроса: стоимость, слайды (текст и файл на каждом) и ответ. Сохраняется сам после каждой правки.
@@ -25,6 +27,8 @@ export default function QuestionEditor({
   onDelete,
   onClose,
   onPreview,
+  hiddenQuestions,
+  canHide,
 }: Props) {
   const { slides } = question
   const problem = questionProblem(question) // недочёт: нет ответа или нет вопроса
@@ -164,10 +168,31 @@ export default function QuestionEditor({
         ))}
       </div>
 
+      {canHide && (
+        <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-line px-4 py-2">
+          <input
+            type="checkbox"
+            checked={!!question.hidden}
+            onChange={(e) => {
+              const hidden = e.target.checked || undefined
+              onChange((q) => ({ ...q, hidden }))
+            }}
+            className="h-5 w-5 accent-white"
+          />
+          <span>
+            <span className="font-semibold">🔒 Скрытый вопрос</span>
+            <span className="block text-sm text-muted">
+              В зале вместо цены — «?». Открывается вариантом ветвящегося вопроса или ведущим на пульте.
+            </span>
+          </span>
+        </label>
+      )}
+
       {question.tree ? (
         <TreeEditor
           tree={question.tree}
           value={question.value}
+          hiddenQuestions={hiddenQuestions}
           onChange={(change) => onChange((q) => (q.tree ? { ...q, tree: change(q.tree) } : q))}
           onMediaRemoved={onMediaRemoved}
         />

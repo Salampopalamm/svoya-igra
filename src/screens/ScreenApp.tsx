@@ -7,7 +7,8 @@ import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
 import { finalStateOf, remover } from '../final'
-import { formatPoints, stepById } from '../tree'
+import { formatPoints, stepById, type BranchState } from '../tree'
+import type { QuestionTree } from '../types'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
@@ -126,7 +127,10 @@ export default function ScreenApp() {
           content: branchNode.content,
           answer: branchNode.answer,
           options: question.tree.branchBy === 'choice' && !live.branch.done ? branchNode.options.map((o) => o.label) : [],
-          summary: live.branch.done && answeringTeam ? `${answeringTeam.name}: ${formatPoints(live.branch.earned)}` : undefined,
+          summary:
+            live.branch.done && answeringTeam
+              ? `${answeringTeam.name}: ${formatPoints(live.branch.earned)}${openedHidden(question.tree, live.branch) ? ' · открыт скрытый вопрос!' : ''}`
+              : undefined,
         }
       : undefined
 
@@ -149,7 +153,7 @@ export default function ScreenApp() {
     ) : final ? (
       <FinalScreen game={game} round={round} final={final} />
     ) : (
-      <Board round={round} interactive={false} />
+      <Board round={round} interactive={false} unlockedIds={live.unlockedIds ?? []} />
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
@@ -216,6 +220,11 @@ export default function ScreenApp() {
       )}
     </HallFrame>
   )
+}
+
+// Открыл ли пройденный путь ветки скрытый вопрос (для итога в зале)
+function openedHidden(tree: QuestionTree, branch: BranchState): boolean {
+  return branch.path.some((p) => !!stepById(tree, p.nodeId)?.options[p.option]?.unlockQuestionId)
 }
 
 // Заставка: логотип клиента (если есть), «СВОЯ ИГРА» и название игры

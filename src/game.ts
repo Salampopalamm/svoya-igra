@@ -375,6 +375,21 @@ export function rehearsalCells(game: Game): CellAddress[] {
     )
 }
 
+// Скрытые вопросы игры — для списка «вариант открывает…» в дереве. Подпись: «Раунд · Категория · 400».
+export type HiddenChoice = { id: string; label: string }
+
+export function hiddenQuestions(game: Game): HiddenChoice[] {
+  return game.rounds
+    .filter((r) => r.kind !== 'final')
+    .flatMap((r) =>
+      r.categories.flatMap((c) =>
+        sortByValue(c.questions)
+          .filter((q) => q.hidden)
+          .map((q) => ({ id: q.id, label: `${game.rounds.length > 1 ? `${r.title} · ` : ''}${c.title} · ${q.value}` })),
+      ),
+    )
+}
+
 // Все вопросы игры одним списком
 export function allQuestions(game: Game): Question[] {
   return game.rounds.flatMap((r) => r.categories.flatMap((c) => c.questions))

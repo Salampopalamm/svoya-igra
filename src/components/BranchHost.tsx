@@ -1,4 +1,5 @@
 import { formatPoints, LETTERS, stepById, stepNumber, type BranchState } from '../tree'
+import type { HiddenChoice } from '../game'
 import type { QuestionTree, Team } from '../types'
 import { MediaView, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
@@ -59,7 +60,7 @@ function BranchPath({ tree, branch }: { tree: QuestionTree; branch: BranchState 
   )
 }
 
-export function BranchControls({ tree, branch, teams, answeringTeamId, onSelectTeam, onChoose, onClose }: {
+export function BranchControls({ tree, branch, teams, answeringTeamId, onSelectTeam, onChoose, onClose, hiddenQuestions }: {
   tree: QuestionTree
   branch: BranchState
   teams: Team[]
@@ -67,6 +68,7 @@ export function BranchControls({ tree, branch, teams, answeringTeamId, onSelectT
   onSelectTeam: (teamId: string | null) => void
   onChoose: (option: number) => void
   onClose: () => void
+  hiddenQuestions: HiddenChoice[] // чтобы подписать, какой скрытый вопрос откроет вариант
 }) {
   const node = stepById(tree, branch.nodeId)
   const team = teams.find((t) => t.id === answeringTeamId)
@@ -127,8 +129,13 @@ export function BranchControls({ tree, branch, teams, answeringTeamId, onSelectT
             >
               {byChoice && <span className="font-display text-xl">{LETTERS[i]}</span>}
               <span className="flex-1 font-semibold">{byChoice ? o.label || 'без подписи' : `${o.label}${i === 0 ? ' · +' : ' · −'}`}</span>
-              <span className="text-sm">
-                {formatPoints(o.points)} → {next ? `Шаг ${stepNumber(tree, next.id)}` : 'конец'}
+              <span className="flex flex-col items-end text-sm">
+                <span>
+                  {formatPoints(o.points)} → {next ? `Шаг ${stepNumber(tree, next.id)}` : 'конец'}
+                </span>
+                {o.unlockQuestionId && hiddenQuestions.some((h) => h.id === o.unlockQuestionId) && (
+                  <span>🔓 {hiddenQuestions.find((h) => h.id === o.unlockQuestionId)!.label}</span>
+                )}
               </span>
             </button>
           )

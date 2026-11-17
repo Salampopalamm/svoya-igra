@@ -35,7 +35,7 @@ import {
 import { VideoContext, type VideoCommand } from '../videoControl'
 import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
-import { mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
+import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
 import { chooseOption, startBranch } from '../tree'
 import { BranchBody, BranchControls } from '../components/BranchHost'
 import type { Game, Question, Theme } from '../types'
@@ -159,6 +159,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const liveRef = useRef(live)
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
+  const unlockedIds = live.unlockedIds ?? []
   const round = roundById(game, live.roundId)
   // Финальный раунд идёт по своим шагам (final.ts); в обычном раунде final = null
   const isFinal = round.kind === 'final'
@@ -232,13 +233,28 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     const points = node?.options[option]?.points ?? 0
     const branch = chooseOption(tree, live.branch, option)
     const gained = tree.scoring === 'per-step' ? points : branch.done ? branch.earned : 0
+    // Вариант может открыть скрытый вопрос на табло
+    const unlock = node?.options[option]?.unlockQuestionId
+    const unlockable = unlock && hiddenQuestions(game).some((h) => h.id === unlock) && !unlockedIds.includes(unlock)
     commit({
       ...withScore(live, answeringTeamId, gained),
+      unlockedIds: unlockable ? [...unlockedIds, unlock] : unlockedIds,
       branch,
       showAnswer: false,
       timer: newTimer(currentCell.question?.timerSec),
       video: null,
     })
+  }
+
+  // Ведущий нажал скрытую ячейку: в предпросмотре — посмотреть её, иначе — открыть (с подтверждением)
+  function handleLockedClick(categoryId: string, questionId: string) {
+    if (previewMode) {
+      setPreview({ categoryId, questionId })
+      return
+    }
+    const label = hiddenQuestions(game).find((h) => h.id === questionId)?.label ?? 'скрытый вопрос'
+    if (!window.confirm(`Открыть скрытый вопрос «${label}»? В зале он появится на табло.`)) return
+    commit({ ...live, unlockedIds: [...unlockedIds, questionId] })
   }
 
   function closeQuestion() {
@@ -825,6 +841,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
                         answeringTeamId={answeringTeamId}
                         onSelectTeam={selectTeam}
                         onChoose={chooseBranchOption}
+                        hiddenQuestions={hiddenQuestions(game)}
                         onClose={closeQuestion}
                       />
                     ),
@@ -843,7 +860,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onShowQuestion={finalShowQuestion}
         />
       ) : (
-        <Board round={round} onCellClick={handleCellClick} />
+        <Board round={round} onCellClick={handleCellClick} unlockedIds={unlockedIds} onLockedClick={handleLockedClick} />
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

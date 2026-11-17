@@ -11,12 +11,14 @@ import {
   updateStep,
   type TreeOption,
 } from '../tree'
+import type { HiddenChoice } from '../game'
 import type { Content, QuestionTree, TreeNode } from '../types'
 import { ContentEditor, SmallButton } from './ContentEditor'
 
 type Props = {
   tree: QuestionTree
   value: number // стоимость вопроса — баллы по умолчанию за верный вариант
+  hiddenQuestions: HiddenChoice[] // скрытые вопросы игры: вариант может открыть один из них
   onChange: (change: (tree: QuestionTree) => QuestionTree) => void
   onMediaRemoved: (mediaId: string) => void
 }
@@ -26,7 +28,7 @@ const toggle = (on: boolean) =>
 
 // Редактор ветвящегося вопроса: шаги списком сверху вниз, у каждого — что видит зал и варианты ответа.
 // Вариант даёт баллы и ведёт к другому шагу или к концу ветки.
-export default function TreeEditor({ tree, value, onChange, onMediaRemoved }: Props) {
+export default function TreeEditor({ tree, value, hiddenQuestions, onChange, onMediaRemoved }: Props) {
   const problems = treeProblems(tree)
   const byChoice = tree.branchBy === 'choice'
 
@@ -103,6 +105,7 @@ export default function TreeEditor({ tree, value, onChange, onMediaRemoved }: Pr
           node={node}
           index={i}
           byChoice={byChoice}
+          hiddenQuestions={hiddenQuestions}
           onChangeContent={(change) => changeStep(node.id, (n) => ({ ...n, content: change(n.content) }))}
           onChangeAnswer={(change) => changeStep(node.id, (n) => ({ ...n, answer: change(n.answer ?? {}) }))}
           onRemoveAnswer={() => {
@@ -152,6 +155,7 @@ function StepCard({
   node,
   index,
   byChoice,
+  hiddenQuestions,
   onChangeContent,
   onChangeAnswer,
   onRemoveAnswer,
@@ -168,6 +172,7 @@ function StepCard({
   node: TreeNode
   index: number
   byChoice: boolean
+  hiddenQuestions: HiddenChoice[]
   onChangeContent: (change: (c: Content) => Content) => void
   onChangeAnswer: (change: (c: Content) => Content) => void
   onRemoveAnswer: () => void
@@ -281,6 +286,27 @@ function StepCard({
                   <option value="__new">+ Новый шаг</option>
                 </select>
               </label>
+              {hiddenQuestions.length > 0 && (
+                <label className="flex items-center gap-2 text-sm text-muted">
+                  🔓 открывает
+                  <select
+                    value={hiddenQuestions.some((h) => h.id === o.unlockQuestionId) ? o.unlockQuestionId : ''}
+                    onChange={(e) => {
+                      const unlockQuestionId = e.target.value || undefined
+                      onChangeOption(i, (x) => ({ ...x, unlockQuestionId }))
+                    }}
+                    aria-label={`Какой скрытый вопрос открывает вариант ${byChoice ? LETTERS[i] : o.label} шага ${index + 1}`}
+                    className="h-11 max-w-64 rounded-lg border border-line bg-bg px-2 text-white focus:border-white focus:outline-none"
+                  >
+                    <option value="">ничего</option>
+                    {hiddenQuestions.map((h) => (
+                      <option key={h.id} value={h.id}>
+                        {h.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {byChoice && (
                 <SmallButton onClick={() => onRemoveOption(i)} label={`Удалить вариант ${LETTERS[i]} шага ${index + 1}`}>
                   ✕
