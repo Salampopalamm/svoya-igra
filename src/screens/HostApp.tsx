@@ -18,10 +18,13 @@ import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
   CHANNEL,
+  clearRehearsal,
   clearState,
+  loadRehearsal,
   loadState,
   newTimer,
   pauseTimer,
+  saveRehearsal,
   saveState,
   startTimer,
   type Current,
@@ -32,7 +35,7 @@ import {
 import { VideoContext, type VideoCommand } from '../videoControl'
 import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
-import { mergeProgress, nextTeamId, roundById } from '../game'
+import { mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
 import type { Game, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
@@ -124,9 +127,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       turnTeamId: exists(saved.turnTeamId) ? saved.turnTeamId : (game.teams[0]?.id ?? null),
       triedTeamIds: (saved.triedTeamIds ?? []).filter(exists),
       video: null, // видео после перезагрузки не продолжаем само — ведущий запустит снова
+      rehearsal: !!saved.rehearsal && loadRehearsal()?.game?.id === initialGame.id, // без запомненной партии репетиция не продолжится
     }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
+  const historyBeforeRehearsal = useRef<LiveState[]>([]) // Ctrl+Z до репетиции — вернём после неё
+  const [lastCell, setLastCell] = useState(-1) // какой вопрос репетиции открывали последним (номер в rehearsalCells)
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
   const [preview, setPreview] = useState<CellRef | null>(null) // только на пульте
   const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
@@ -196,6 +202,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
+    // В репетиции «Следующий вопрос» продолжит с этой ячейки
+    if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
     // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
     const { question } = find({ categoryId, questionId })
     commit({
@@ -391,7 +399,58 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     window.open(`${window.location.pathname}#/screen`, 'svoya-igra-screen', 'popup,width=1280,height=720')
   }
 
+  // ---- Репетиция ----
+  // Ведущий проходит вопросы с открытым залом (проверить проектор, звук, картинки).
+  // Всё, что сделано в репетиции, потом отменяется: партия возвращается такой, какой была до неё.
+
+  function startRehearsal() {
+    if (live.rehearsal || current) return
+    saveRehearsal(live)
+    historyBeforeRehearsal.current = history
+    setHistory([])
+    setPreview(null)
+    setPreviewMode(false)
+    setLive({ ...live, rehearsal: true })
+  }
+
+  function endRehearsal() {
+    const before = loadRehearsal()
+    clearRehearsal()
+    setLive(before && before.game.id === game.id ? { ...before, rehearsal: false, video: null } : { ...withClosed(live), rehearsal: false })
+    setHistory(historyBeforeRehearsal.current)
+    historyBeforeRehearsal.current = []
+    setLastCell(-1)
+  }
+
+  const cells = live.rehearsal ? rehearsalCells(game) : []
+  const cellIndex = current ? cells.findIndex((c) => c.questionId === current.questionId) : -1
+  const position = cellIndex >= 0 ? cellIndex : lastCell // откуда считать «следующий» (вопрос мог быть уже закрыт)
+
+  // Открыть в зале соседний вопрос по порядку табло (даже из другого раунда)
+  function rehearseStep(delta: number) {
+    const cell = cells[position + delta]
+    if (!cell) return
+    setLastCell(position + delta)
+    const question = game.rounds
+      .find((r) => r.id === cell.roundId)
+      ?.categories.find((c) => c.id === cell.categoryId)
+      ?.questions.find((q) => q.id === cell.questionId)
+    commit({
+      ...live,
+      roundId: cell.roundId,
+      current: { categoryId: cell.categoryId, questionId: cell.questionId },
+      slideIndex: 0,
+      showAnswer: false,
+      answeringTeamId: turnTeamId,
+      triedTeamIds: [],
+      timer: newTimer(question?.timerSec),
+      video: null,
+    })
+  }
+
   function resetGame() {
+    clearRehearsal()
+    historyBeforeRehearsal.current = []
     clearState()
     setLive(freshState({ ...initialGame, theme: game.theme })) // вид команд, выбранный в игре, оставляем
     setHistory([])
@@ -505,6 +564,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           >
             Команды и игроки
           </a>
+        )
+      case 'rehearsal':
+        return (
+          <button
+            type="button"
+            onClick={live.rehearsal ? endRehearsal : startRehearsal}
+            disabled={!live.rehearsal && !!current}
+            aria-pressed={!!live.rehearsal}
+            title={!live.rehearsal && current ? 'Сначала закройте вопрос' : undefined}
+            className={`${toggleClass(!!live.rehearsal)} disabled:opacity-40`}
+          >
+            {live.rehearsal ? 'Закончить репетицию' : 'Репетиция'}
+          </button>
         )
       case 'reset':
         return (
@@ -629,6 +701,39 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onTogglePin={togglePin}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {live.rehearsal && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-dashed border-white px-5 py-3">
+          <div className="mr-auto flex flex-col">
+            <span className="font-semibold">РЕПЕТИЦИЯ · в зале видна метка «Репетиция»</span>
+            <span className="text-sm text-muted">
+              Играйте как обычно. Когда закончите, счёт, сыгранные вопросы и ход вернутся такими, какими были до репетиции.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => rehearseStep(-1)}
+            disabled={position <= 0}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+          >
+            ← Предыдущий вопрос
+          </button>
+          <span className="text-sm text-muted tabular-nums">
+            {cellIndex >= 0 ? `Вопрос ${cellIndex + 1} из ${cells.length}` : `Вопросов: ${cells.length}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => rehearseStep(1)}
+            disabled={position >= cells.length - 1}
+            className="h-11 rounded-lg bg-white px-4 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-40"
+          >
+            {position < 0 ? 'Первый вопрос →' : 'Следующий вопрос →'}
+          </button>
+          <button type="button" onClick={endRehearsal} className="h-11 rounded-lg border border-white px-4 text-sm font-semibold hover:bg-white hover:text-black">
+            Закончить репетицию
+          </button>
+        </div>
       )}
 
       <MediaStatus

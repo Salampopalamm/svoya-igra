@@ -348,6 +348,22 @@ export function copyGame(game: Game): Game {
   return { ...game, id: newId(), title: `${game.title} (копия)` }
 }
 
+// Все заполненные вопросы обычных раундов по порядку табло: раунд → категория → ячейки слева направо.
+// По этому списку идёт репетиция («Следующий вопрос»). Финал репетируют, просто сыграв его.
+export type CellAddress = { roundId: string; categoryId: string; questionId: string }
+
+export function rehearsalCells(game: Game): CellAddress[] {
+  return game.rounds
+    .filter((r) => r.kind !== 'final')
+    .flatMap((r) =>
+      r.categories.flatMap((c) =>
+        sortByValue(c.questions)
+          .filter((q) => !isEmptyQuestion(q))
+          .map((q) => ({ roundId: r.id, categoryId: c.id, questionId: q.id })),
+      ),
+    )
+}
+
 // Все вопросы игры одним списком
 export function allQuestions(game: Game): Question[] {
   return game.rounds.flatMap((r) => r.categories.flatMap((c) => c.questions))

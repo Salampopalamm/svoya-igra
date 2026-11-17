@@ -155,7 +155,15 @@ export default function ScreenApp() {
           className="h-14 max-w-60"
           fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
         />
-        <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+        <span className="flex items-center gap-4">
+          <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+          {/* Репетиция: в зале видно, что это не настоящая игра */}
+          {live.rehearsal && (
+            <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
+              РЕПЕТИЦИЯ
+            </span>
+          )}
+        </span>
         {!questionOpen && !final && turnTeam ? (
           <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
             <TeamIcon team={turnTeam} size={28} />
