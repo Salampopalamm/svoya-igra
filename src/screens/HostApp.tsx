@@ -3,6 +3,7 @@ import Board from '../components/Board'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
+import HowToRun from '../components/HowToRun'
 import FinalHost, { FinalAnswers } from '../components/FinalHost'
 import {
   betsReady,
@@ -132,6 +133,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
   const [hallMedia, setHallMedia] = useState<{ done: number; total: number } | null>(null) // файлы, загруженные в зале
   const [settingsOpen, setSettingsOpen] = useState(false) // открыта панель настроек (⚙)
+  const [howToOpen, setHowToOpen] = useState(false) // открыта памятка «Как провести игру»
   const { pinned, toggle: togglePin } = usePinnedControls() // кнопки на панели ведущего
 
   const channelRef = useRef<BroadcastChannel | null>(null)
@@ -415,7 +417,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.code === 'KeyH') toggleScreenHidden()
       // Esc — закрыть настройки, предпросмотр или вопрос
       if (e.code === 'Escape') {
-        if (settingsOpen) setSettingsOpen(false)
+        if (howToOpen) setHowToOpen(false)
+        else if (settingsOpen) setSettingsOpen(false)
         else if (preview) setPreview(null)
         else if (current && !isFinal) closeQuestion() // вопрос финала закрывается только итогами
       }
@@ -528,6 +531,20 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             {screenHidden ? 'Экран зала скрыт · H' : 'Скрыть экран зала · H'}
           </button>
         )
+      case 'how-to':
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              setSettingsOpen(false)
+              setHowToOpen(true)
+            }}
+            aria-expanded={howToOpen}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            ? Как провести игру
+          </button>
+        )
       case 'tone':
         return <ToneButtons theme={game.theme} onChange={changeTheme} />
       case 'font':
@@ -629,6 +646,31 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onTogglePin={togglePin}
           onClose={() => setSettingsOpen(false)}
         />
+      )}
+
+      {howToOpen && <HowToRun onClose={() => setHowToOpen(false)} />}
+
+      {/* Зал ещё не открыт (или его закрыли) — подсказываем, с чего начать */}
+      {(hallStatus === null || hallStatus === 'closed') && !current && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-cell px-5 py-3">
+          <span className="min-w-0 flex-1">
+            {hallStatus === 'closed' ? 'Экран зала закрыт' : 'Экран зала ещё не открыт'} — зрители пока ничего не видят.
+          </span>
+          <button
+            type="button"
+            onClick={openScreen}
+            className="h-11 rounded-lg bg-white px-4 text-sm font-semibold text-black hover:bg-muted"
+          >
+            Открыть экран для зала
+          </button>
+          <button
+            type="button"
+            onClick={() => setHowToOpen(true)}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg"
+          >
+            Как вывести на проектор
+          </button>
+        </div>
       )}
 
       <MediaStatus

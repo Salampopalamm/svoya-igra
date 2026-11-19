@@ -10,6 +10,7 @@ export type ControlId =
   | 'reset'
   | 'open-screen'
   | 'hide-screen'
+  | 'how-to'
   | 'tone'
   | 'font'
   | 'grayscale'
@@ -19,7 +20,7 @@ export type ControlId =
 
 export const CONTROL_GROUPS: { title: string; ids: ControlId[] }[] = [
   { title: 'Игра', ids: ['preview', 'undo', 'teams', 'reset'] },
-  { title: 'Экран зала', ids: ['open-screen', 'hide-screen'] },
+  { title: 'Экран зала', ids: ['open-screen', 'hide-screen', 'how-to'] },
   { title: 'Оформление зала', ids: ['tone', 'font', 'grayscale'] },
   { title: 'Команды в зале', ids: ['team-view', 'photos'] },
   { title: 'Звук', ids: ['timer-sound'] },
@@ -33,6 +34,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
   reset: 'Начать заново',
   'open-screen': 'Открыть экран для зала',
   'hide-screen': 'Скрыть экран зала',
+  'how-to': 'Как провести игру',
   tone: 'Фон зала',
   font: 'Шрифт',
   grayscale: 'Обесцветить медиа',
@@ -42,7 +44,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
 }
 
 // Без настроек на панели — самое нужное во время игры
-const DEFAULT_PINNED: ControlId[] = ['preview', 'hide-screen', 'undo', 'open-screen']
+const DEFAULT_PINNED: ControlId[] = ['preview', 'hide-screen', 'undo', 'open-screen', 'how-to']
 
 const STORAGE_KEY = 'svoya-igra:host-pinned'
 
