@@ -1,4 +1,5 @@
-import type { Game } from './types'
+import type { BranchState } from './tree'
+import type { Game, MediaRef } from './types'
 
 // «Живое» состояние игры, которое пульт передаёт экрану зала.
 // Предпросмотр и история отмен сюда НЕ входят — они существуют только на пульте.
@@ -18,6 +19,12 @@ export type LiveState = {
   timer: TimerState | null // таймер открытого вопроса (null — у вопроса нет таймера)
   video: VideoState | null // видео в зале, которым управляет ведущий (null — ни одно не запускали)
   final?: FinalState | null // ход финального раунда (функции — в final.ts); в старых сохранениях его нет
+  rehearsal?: boolean // идёт репетиция: в зале метка, а после неё партия вернётся как была
+  branch?: BranchState | null // открыт ветвящийся вопрос: на каком он шаге (функции — в tree.ts)
+  unlockedIds?: string[] // скрытые вопросы, которые уже открыли (вариантом дерева или ведущий)
+  unlockedRoundIds?: string[] // скрытые раунды, которые уже открыли (правилом или ведущий)
+  rulesDone?: string[] // правила, которые ведущий уже выполнил или пропустил — больше не предлагаем
+  shownMedia?: MediaRef | null // картинка или видео во весь экран зала (действие правила)
 }
 
 // Финальный раунд: убирание тем → ставки → вопрос → итоги.
@@ -104,6 +111,34 @@ export function saveState(state: LiveState) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
   } catch {
     // хранилище недоступно — игра продолжится без сохранения
+  }
+}
+
+// Репетиция: партия, какой она была до репетиции. Лежит отдельно — на случай перезагрузки пульта посреди репетиции.
+const REHEARSAL_KEY = 'svoya-igra:rehearsal'
+
+export function saveRehearsal(state: LiveState) {
+  try {
+    localStorage.setItem(REHEARSAL_KEY, JSON.stringify(state))
+  } catch {
+    // хранилище недоступно — партию до репетиции помним только в памяти пульта
+  }
+}
+
+export function loadRehearsal(): LiveState | null {
+  try {
+    const raw = localStorage.getItem(REHEARSAL_KEY)
+    return raw ? (JSON.parse(raw) as LiveState) : null
+  } catch {
+    return null
+  }
+}
+
+export function clearRehearsal() {
+  try {
+    localStorage.removeItem(REHEARSAL_KEY)
+  } catch {
+    // ничего страшного
   }
 }
 

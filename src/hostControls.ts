@@ -8,6 +8,7 @@ export type ControlId =
   | 'undo'
   | 'teams'
   | 'reset'
+  | 'rehearsal'
   | 'open-screen'
   | 'hide-screen'
   | 'how-to'
@@ -19,7 +20,7 @@ export type ControlId =
   | 'timer-sound'
 
 export const CONTROL_GROUPS: { title: string; ids: ControlId[] }[] = [
-  { title: 'Игра', ids: ['preview', 'undo', 'teams', 'reset'] },
+  { title: 'Игра', ids: ['preview', 'undo', 'teams', 'rehearsal', 'reset'] },
   { title: 'Экран зала', ids: ['open-screen', 'hide-screen', 'how-to'] },
   { title: 'Оформление зала', ids: ['tone', 'font', 'grayscale'] },
   { title: 'Команды в зале', ids: ['team-view', 'photos'] },
@@ -32,6 +33,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
   undo: 'Отменить',
   teams: 'Команды и игроки',
   reset: 'Начать заново',
+  rehearsal: 'Репетиция',
   'open-screen': 'Открыть экран для зала',
   'hide-screen': 'Скрыть экран зала',
   'how-to': 'Как провести игру',

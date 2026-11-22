@@ -19,10 +19,13 @@ import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
   CHANNEL,
+  clearRehearsal,
   clearState,
+  loadRehearsal,
   loadState,
   newTimer,
   pauseTimer,
+  saveRehearsal,
   saveState,
   startTimer,
   type Current,
@@ -33,8 +36,11 @@ import {
 import { VideoContext, type VideoCommand } from '../videoControl'
 import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
-import { mergeProgress, nextTeamId, roundById } from '../game'
-import type { Game, Theme } from '../types'
+import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
+import { chooseOption, startBranch } from '../tree'
+import { describeRule, readyRules } from '../rules'
+import { BranchBody, BranchControls } from '../components/BranchHost'
+import type { Game, Question, Rule, Theme } from '../types'
 import { FONTS, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { usePreload } from '../preload'
@@ -104,6 +110,19 @@ function withClosed(s: LiveState): LiveState {
     turnTeamId: nextTeamId(s.game, s.turnTeamId),
     timer: null,
     video: null,
+    branch: null,
+  }
+}
+
+// Только что открытый вопрос: первый слайд, ответ скрыт, таймер ждёт запуска, ветвящийся — на первом шаге
+function openedQuestion(question: Question | undefined): Partial<LiveState> {
+  return {
+    slideIndex: 0,
+    showAnswer: false,
+    triedTeamIds: [],
+    timer: newTimer(question?.timerSec),
+    video: null,
+    branch: question?.tree ? startBranch(question.tree) : null,
   }
 }
 
@@ -125,9 +144,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       turnTeamId: exists(saved.turnTeamId) ? saved.turnTeamId : (game.teams[0]?.id ?? null),
       triedTeamIds: (saved.triedTeamIds ?? []).filter(exists),
       video: null, // видео после перезагрузки не продолжаем само — ведущий запустит снова
+      rehearsal: !!saved.rehearsal && loadRehearsal()?.game?.id === initialGame.id, // без запомненной партии репетиция не продолжится
     }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
+  const historyBeforeRehearsal = useRef<LiveState[]>([]) // Ctrl+Z до репетиции — вернём после неё
+  const [lastCell, setLastCell] = useState(-1) // какой вопрос репетиции открывали последним (номер в rehearsalCells)
   const [previewMode, setPreviewMode] = useState(false) // только на пульте
   const [preview, setPreview] = useState<CellRef | null>(null) // только на пульте
   const [hallStatus, setHallStatus] = useState<HallStatus | null>(null) // null — зал ещё не отзывался
@@ -140,6 +162,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const liveRef = useRef(live)
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
+  const unlockedIds = live.unlockedIds ?? []
+  const unlockedRoundIds = live.unlockedRoundIds ?? []
+  const rulesDone = live.rulesDone ?? []
   const round = roundById(game, live.roundId)
   // Финальный раунд идёт по своим шагам (final.ts); в обычном раунде final = null
   const isFinal = round.kind === 'final'
@@ -198,40 +223,96 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
+    // В репетиции «Следующий вопрос» продолжит с этой ячейки
+    if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
     // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
     const { question } = find({ categoryId, questionId })
+    commit({ ...live, ...openedQuestion(question), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
+  }
+
+  // Ветвящийся вопрос: ведущий нажал вариант. Баллы — сразу или одной суммой в конце ветки, следующий шаг.
+  function chooseBranchOption(option: number) {
+    const tree = currentCell.question?.tree
+    if (!tree || !live.branch || live.branch.done || !answeringTeamId) return
+    const node = tree.nodes.find((n) => n.id === live.branch!.nodeId)
+    const points = node?.options[option]?.points ?? 0
+    const branch = chooseOption(tree, live.branch, option)
+    const gained = tree.scoring === 'per-step' ? points : branch.done ? branch.earned : 0
+    // Вариант может открыть скрытый вопрос на табло
+    const unlock = node?.options[option]?.unlockQuestionId
+    const unlockable = unlock && hiddenQuestions(game).some((h) => h.id === unlock) && !unlockedIds.includes(unlock)
     commit({
-      ...live,
-      current: { categoryId, questionId },
-      slideIndex: 0,
+      ...withScore(live, answeringTeamId, gained),
+      unlockedIds: unlockable ? [...unlockedIds, unlock] : unlockedIds,
+      branch,
       showAnswer: false,
-      answeringTeamId: turnTeamId,
-      triedTeamIds: [],
-      timer: newTimer(question?.timerSec),
+      timer: newTimer(currentCell.question?.timerSec),
       video: null,
     })
+  }
+
+  // Ведущий нажал скрытую ячейку: в предпросмотре — посмотреть её, иначе — открыть (с подтверждением)
+  function handleLockedClick(categoryId: string, questionId: string) {
+    if (previewMode) {
+      setPreview({ categoryId, questionId })
+      return
+    }
+    const label = hiddenQuestions(game).find((h) => h.id === questionId)?.label ?? 'скрытый вопрос'
+    if (!window.confirm(`Открыть скрытый вопрос «${label}»? В зале он появится на табло.`)) return
+    commit({ ...live, unlockedIds: [...unlockedIds, questionId] })
   }
 
   function closeQuestion() {
     commit(withClosed(live))
   }
 
+  // ---- Правила «ЕСЛИ → ТО» ----
+  // Пока вопрос открыт, правила ждут; на табло пульт предлагает выполнить их по одному.
+  const pendingRules = current ? [] : readyRules(game, rulesDone, unlockedIds)
+
+  function runRule(rule: Rule) {
+    const { then } = rule
+    commit({
+      ...live,
+      rulesDone: [...rulesDone, rule.id],
+      unlockedIds: then.kind === 'unlock-question' && !unlockedIds.includes(then.target) ? [...unlockedIds, then.target] : unlockedIds,
+      unlockedRoundIds:
+        then.kind === 'open-round' && !unlockedRoundIds.includes(then.target) ? [...unlockedRoundIds, then.target] : unlockedRoundIds,
+      shownMedia: then.kind === 'show-media' && then.media ? then.media : live.shownMedia,
+    })
+  }
+
+  function skipRule(rule: Rule) {
+    commit({ ...live, rulesDone: [...rulesDone, rule.id] })
+  }
+
+  // Скрытый раунд закрыт, пока его не откроет правило или ведущий
+  const roundLocked = (r: { id: string; hidden?: boolean }) => !!r.hidden && !unlockedRoundIds.includes(r.id)
+
+  function openHiddenRound(roundId: string, title: string) {
+    if (current) return
+    if (!window.confirm(`Открыть скрытый раунд «${title}»? После этого на него можно переключиться.`)) return
+    commit({ ...live, unlockedRoundIds: [...unlockedRoundIds, roundId] })
+  }
+
   // Перейти к другому раунду (только с табло, не посреди вопроса); отменяется через Ctrl+Z
   function switchRound(roundId: string) {
     if (current || roundId === round.id) return
+    const target = game.rounds.find((r) => r.id === roundId)
+    if (target && roundLocked(target)) return
     commit({ ...live, roundId })
     setPreview(null)
   }
 
   // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
   function handleCorrect(teamId: string) {
-    if (!currentCell.question || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
-    if (!currentCell.question || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
   }
 
@@ -393,7 +474,54 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     window.open(`${window.location.pathname}#/screen`, 'svoya-igra-screen', 'popup,width=1280,height=720')
   }
 
+  // ---- Репетиция ----
+  // Ведущий проходит вопросы с открытым залом (проверить проектор, звук, картинки).
+  // Всё, что сделано в репетиции, потом отменяется: партия возвращается такой, какой была до неё.
+
+  function startRehearsal() {
+    if (live.rehearsal || current) return
+    saveRehearsal(live)
+    historyBeforeRehearsal.current = history
+    setHistory([])
+    setPreview(null)
+    setPreviewMode(false)
+    setLive({ ...live, rehearsal: true })
+  }
+
+  function endRehearsal() {
+    const before = loadRehearsal()
+    clearRehearsal()
+    setLive(before && before.game.id === game.id ? { ...before, rehearsal: false, video: null } : { ...withClosed(live), rehearsal: false })
+    setHistory(historyBeforeRehearsal.current)
+    historyBeforeRehearsal.current = []
+    setLastCell(-1)
+  }
+
+  const cells = live.rehearsal ? rehearsalCells(game) : []
+  const cellIndex = current ? cells.findIndex((c) => c.questionId === current.questionId) : -1
+  const position = cellIndex >= 0 ? cellIndex : lastCell // откуда считать «следующий» (вопрос мог быть уже закрыт)
+
+  // Открыть в зале соседний вопрос по порядку табло (даже из другого раунда)
+  function rehearseStep(delta: number) {
+    const cell = cells[position + delta]
+    if (!cell) return
+    setLastCell(position + delta)
+    const question = game.rounds
+      .find((r) => r.id === cell.roundId)
+      ?.categories.find((c) => c.id === cell.categoryId)
+      ?.questions.find((q) => q.id === cell.questionId)
+    commit({
+      ...live,
+      ...openedQuestion(question),
+      roundId: cell.roundId,
+      current: { categoryId: cell.categoryId, questionId: cell.questionId },
+      answeringTeamId: turnTeamId,
+    })
+  }
+
   function resetGame() {
+    clearRehearsal()
+    historyBeforeRehearsal.current = []
     clearState()
     setLive(freshState({ ...initialGame, theme: game.theme })) // вид команд, выбранный в игре, оставляем
     setHistory([])
@@ -447,8 +575,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         e.preventDefault()
         if (!showAnswer && !isFinal) showAnswerInHall() // в финале ответ — вместе с итогами
       }
-      // + / − — «Верно» / «Неверно» для выбранной команды
-      if (answeringTeamId) {
+      // + / − — «Верно» / «Неверно» для выбранной команды (в дереве по правильности — варианты «Верно / Неверно»)
+      if (answeringTeamId && currentCell.question?.tree) {
+        if (currentCell.question.tree.branchBy === 'correctness') {
+          if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') chooseBranchOption(0)
+          if (e.key === '-' || e.code === 'NumpadSubtract') chooseBranchOption(1)
+        }
+      } else if (answeringTeamId) {
         if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') handleCorrect(answeringTeamId)
         if (e.key === '-' || e.code === 'NumpadSubtract') handleWrong(answeringTeamId)
       }
@@ -508,6 +641,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           >
             Команды и игроки
           </a>
+        )
+      case 'rehearsal':
+        return (
+          <button
+            type="button"
+            onClick={live.rehearsal ? endRehearsal : startRehearsal}
+            disabled={!live.rehearsal && !!current}
+            aria-pressed={!!live.rehearsal}
+            title={!live.rehearsal && current ? 'Сначала закройте вопрос' : undefined}
+            className={`${toggleClass(!!live.rehearsal)} disabled:opacity-40`}
+          >
+            {live.rehearsal ? 'Закончить репетицию' : 'Репетиция'}
+          </button>
         )
       case 'reset':
         return (
@@ -605,7 +751,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           </span>
           {game.rounds.length > 1 && (
             <div role="group" aria-label="Раунд на табло" className="flex gap-1.5">
-              {game.rounds.map((r) => (
+              {game.rounds.map((r) =>
+                roundLocked(r) ? (
+                  <button
+                    key={r.id}
+                    type="button"
+                    onClick={() => openHiddenRound(r.id, r.title)}
+                    disabled={!!current}
+                    title="Скрытый раунд: нажмите, чтобы открыть его"
+                    className="h-11 rounded-lg border border-dashed border-line px-3 text-sm text-muted hover:text-white disabled:opacity-40"
+                  >
+                    🔒 {r.title}
+                  </button>
+                ) : (
                 <button
                   key={r.id}
                   type="button"
@@ -617,7 +775,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
                 >
                   {r.title}
                 </button>
-              ))}
+                ),
+              )}
             </div>
           )}
         </div>
@@ -673,6 +832,71 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         </div>
       )}
 
+      {/* Правило «ЕСЛИ → ТО» сработало — ведущий решает, выполнить ли его */}
+      {pendingRules.slice(0, 1).map((rule) => {
+        const text = describeRule(game, rule)
+        return (
+          <div key={rule.id} role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-white bg-cell px-5 py-3">
+            <span className="mr-auto">
+              <span className="font-semibold">Сработало правило:</span> ЕСЛИ {text.when} → ТО {text.then}
+              {pendingRules.length > 1 && <span className="text-sm text-muted"> · и ещё {pendingRules.length - 1}</span>}
+            </span>
+            <button type="button" onClick={() => runRule(rule)} className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90">
+              Выполнить
+            </button>
+            <button type="button" onClick={() => skipRule(rule)} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
+              Пропустить
+            </button>
+          </div>
+        )
+      })}
+
+      {live.shownMedia && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-white px-5 py-3">
+          <span className="mr-auto">В зале во весь экран: «{live.shownMedia.name}»</span>
+          <button
+            type="button"
+            onClick={() => commit({ ...live, shownMedia: null })}
+            className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90"
+          >
+            Убрать из зала
+          </button>
+        </div>
+      )}
+
+      {live.rehearsal && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-dashed border-white px-5 py-3">
+          <div className="mr-auto flex flex-col">
+            <span className="font-semibold">РЕПЕТИЦИЯ · в зале видна метка «Репетиция»</span>
+            <span className="text-sm text-muted">
+              Играйте как обычно. Когда закончите, счёт, сыгранные вопросы и ход вернутся такими, какими были до репетиции.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => rehearseStep(-1)}
+            disabled={position <= 0}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
+          >
+            ← Предыдущий вопрос
+          </button>
+          <span className="text-sm text-muted tabular-nums">
+            {cellIndex >= 0 ? `Вопрос ${cellIndex + 1} из ${cells.length}` : `Вопросов: ${cells.length}`}
+          </span>
+          <button
+            type="button"
+            onClick={() => rehearseStep(1)}
+            disabled={position >= cells.length - 1}
+            className="h-11 rounded-lg bg-white px-4 text-sm font-semibold text-black hover:opacity-90 disabled:opacity-40"
+          >
+            {position < 0 ? 'Первый вопрос →' : 'Следующий вопрос →'}
+          </button>
+          <button type="button" onClick={endRehearsal} className="h-11 rounded-lg border border-white px-4 text-sm font-semibold hover:bg-white hover:text-black">
+            Закончить репетицию
+          </button>
+        </div>
+      )}
+
       <MediaStatus
         own={media}
         hall={hallStatus && hallStatus !== 'closed' ? hallMedia : null}
@@ -719,6 +943,32 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
               if (game.theme.sounds.enabled) playTimeUp()
             }}
             final={final ? <FinalAnswers game={game} final={final} onMark={finalMark} onReveal={finalReveal} /> : undefined}
+            branch={
+              currentCell.question.tree && live.branch
+                ? {
+                    body: (
+                      <BranchBody
+                        tree={currentCell.question.tree}
+                        branch={live.branch}
+                        showAnswer={showAnswer}
+                        onShowAnswer={showAnswerInHall}
+                      />
+                    ),
+                    bottom: (
+                      <BranchControls
+                        tree={currentCell.question.tree}
+                        branch={live.branch}
+                        teams={game.teams}
+                        answeringTeamId={answeringTeamId}
+                        onSelectTeam={selectTeam}
+                        onChoose={chooseBranchOption}
+                        hiddenQuestions={hiddenQuestions(game)}
+                        onClose={closeQuestion}
+                      />
+                    ),
+                  }
+                : undefined
+            }
           />
         </VideoContext.Provider>
       ) : final ? (
@@ -731,7 +981,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onShowQuestion={finalShowQuestion}
         />
       ) : (
-        <Board round={round} onCellClick={handleCellClick} />
+        <Board round={round} onCellClick={handleCellClick} unlockedIds={unlockedIds} onLockedClick={handleLockedClick} />
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

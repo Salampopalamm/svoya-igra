@@ -24,8 +24,14 @@ export default function HallPreview({ theme, gameTitle, roundTitle, categoryTitl
   const [timer, setTimer] = useState<TimerState | null>(() => newTimer(question.timerSec))
   const closeRef = useRef<HTMLButtonElement>(null)
 
-  const count = question.slides.length
-  const slide = question.slides[slideIndex] ?? {}
+  // Ветвящийся вопрос листается по шагам дерева, обычный — по слайдам
+  const tree = question.tree
+  const count = tree ? tree.nodes.length : question.slides.length
+  const node = tree?.nodes[slideIndex]
+  const slide = node ? node.content : (question.slides[slideIndex] ?? {})
+  const step = node
+    ? { content: node.content, answer: node.answer, options: tree!.branchBy === 'choice' ? node.options.map((o) => o.label) : [] }
+    : undefined
 
   function goSlide(delta: number) {
     setSlideIndex((i) => Math.min(count - 1, Math.max(0, i + delta)))
@@ -83,6 +89,7 @@ export default function HallPreview({ theme, gameTitle, roundTitle, categoryTitl
               stealing={false}
               canSteal={false}
               timer={timer}
+              step={step}
             />
           </div>
         </HallFrame>
@@ -98,7 +105,7 @@ export default function HallPreview({ theme, gameTitle, roundTitle, categoryTitl
                 ←
               </button>
               <span className="text-sm tabular-nums">
-                Слайд {slideIndex + 1} из {count}
+                {tree ? 'Шаг' : 'Слайд'} {slideIndex + 1} из {count}
               </span>
               <button type="button" onClick={() => goSlide(1)} disabled={slideIndex === count - 1} aria-label="Следующий слайд" className={button}>
                 →

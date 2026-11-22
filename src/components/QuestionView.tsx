@@ -28,6 +28,7 @@ type Props = {
   onSetTimerLength: (sec: number | null) => void // ведущий выбрал время (null — без таймера)
   onTimeUp: () => void // время вышло — сигнал
   final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
+  branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -168,6 +169,7 @@ export default function QuestionView({
   onSetTimerLength,
   onTimeUp,
   final,
+  branch,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -202,6 +204,10 @@ export default function QuestionView({
         <span className="text-sm text-muted">в зале сейчас этот вопрос</span>
       </div>
 
+      {branch ? (
+        branch.body
+      ) : (
+        <>
       <SlideView slide={slide} mode="host" textClass="text-4xl" mediaClass="max-h-[40vh] self-start" />
 
       {count > 1 && (
@@ -249,6 +255,8 @@ export default function QuestionView({
           </button>
         )}
       </div>
+        </>
+      )}
 
       <div className="flex flex-wrap items-stretch gap-4">
         <HostTimer
@@ -266,7 +274,7 @@ export default function QuestionView({
         )}
       </div>
 
-      {final ?? (
+      {branch?.bottom ?? final ?? (
       <div className="mt-auto flex flex-col gap-3">
         <div className="text-xl font-semibold" aria-live="polite">
           {status}

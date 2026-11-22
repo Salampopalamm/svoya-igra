@@ -6,7 +6,10 @@ import { GameLogo, HallFrame } from '../components/HallFrame'
 import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
+import { MediaView } from '../components/MediaView'
 import { finalStateOf, remover } from '../final'
+import { formatPoints, stepById, type BranchState } from '../tree'
+import type { QuestionTree } from '../types'
 import { roundById } from '../game'
 import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
@@ -117,6 +120,21 @@ export default function ScreenApp() {
   const activeLabel = final ? 'УБИРАЕТ' : questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
   const outTeamIds = questionOpen ? triedTeamIds : []
 
+  // Ветвящийся вопрос: какой шаг показывать, его варианты и (в конце) итог ветки
+  const branchNode = question?.tree && live.branch ? stepById(question.tree, live.branch.nodeId) : undefined
+  const step =
+    question?.tree && live.branch && branchNode
+      ? {
+          content: branchNode.content,
+          answer: branchNode.answer,
+          options: question.tree.branchBy === 'choice' && !live.branch.done ? branchNode.options.map((o) => o.label) : [],
+          summary:
+            live.branch.done && answeringTeam
+              ? `${answeringTeam.name}: ${formatPoints(live.branch.earned)}${openedHidden(question.tree, live.branch) ? ' · открыт скрытый вопрос!' : ''}`
+              : undefined,
+        }
+      : undefined
+
   const content =
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
@@ -127,6 +145,7 @@ export default function ScreenApp() {
           slideIndex={slideIndex}
           showAnswer={showAnswer}
           answeringTeam={final ? undefined : answeringTeam}
+          step={step}
           stealing={stealing}
           canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
           timer={live.timer ?? null}
@@ -135,11 +154,14 @@ export default function ScreenApp() {
     ) : final ? (
       <FinalScreen game={game} round={round} final={final} />
     ) : (
-      <Board round={round} interactive={false} />
+      <Board round={round} interactive={false} unlockedIds={live.unlockedIds ?? []} />
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
-    <div key={question?.id ?? (final ? `final-${final.phase}` : `board-${round.id}`)} className="anim-appear flex min-h-0 flex-1 flex-col">
+    <div
+      key={question ? `${question.id}-${live.branch?.nodeId ?? ''}` : final ? `final-${final.phase}` : `board-${round.id}`}
+      className="anim-appear flex min-h-0 flex-1 flex-col"
+    >
       {content}
     </div>
   )
@@ -149,13 +171,31 @@ export default function ScreenApp() {
 
   return (
     <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
+      {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
+      {live.shownMedia && (
+        <div key={live.shownMedia.id} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-10">
+          <VideoContext.Provider
+            value={{ video: { mediaId: live.shownMedia.id, playing: true, time: 0, volume: 1, seq: 1 }, onBlocked: soundBlocked }}
+          >
+            <MediaView media={live.shownMedia} mode="hall" className="max-h-full max-w-full" />
+          </VideoContext.Provider>
+        </div>
+      )}
       <header className="flex items-center justify-between">
         <GameLogo
           theme={game.theme}
           className="h-14 max-w-60"
           fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
         />
-        <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+        <span className="flex items-center gap-4">
+          <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+          {/* Репетиция: в зале видно, что это не настоящая игра */}
+          {live.rehearsal && (
+            <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
+              РЕПЕТИЦИЯ
+            </span>
+          )}
+        </span>
         {!questionOpen && !final && turnTeam ? (
           <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
             <TeamIcon team={turnTeam} size={28} />
@@ -191,6 +231,11 @@ export default function ScreenApp() {
       )}
     </HallFrame>
   )
+}
+
+// Открыл ли пройденный путь ветки скрытый вопрос (для итога в зале)
+function openedHidden(tree: QuestionTree, branch: BranchState): boolean {
+  return branch.path.some((p) => !!stepById(tree, p.nodeId)?.options[p.option]?.unlockQuestionId)
 }
 
 // Заставка: логотип клиента (если есть), «СВОЯ ИГРА» и название игры

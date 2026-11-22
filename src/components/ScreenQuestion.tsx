@@ -1,8 +1,9 @@
 import { formatTime, type TimerState } from '../live'
-import type { Question, Team } from '../types'
+import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
 import { MediaView, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
+import { LETTERS } from '../tree'
 
 type Props = {
   categoryTitle: string
@@ -14,6 +15,8 @@ type Props = {
   canSteal: boolean // перехватить ещё есть кому (не все ошиблись)
   timer: TimerState | null
   hideValue?: boolean // финал: играют на ставки, цены нет
+  // Ветвящийся вопрос: вместо слайда — текущий шаг дерева, его варианты (без баллов) и итог ветки
+  step?: { content: Content; answer?: Content; options: string[]; summary?: string }
 }
 
 // Таймер в зале: крупные цифры и полоса, которая тает. Последние 5 секунд — инверсия, в конце — «ВРЕМЯ!».
@@ -46,8 +49,10 @@ export default function ScreenQuestion({
   canSteal,
   timer,
   hideValue,
+  step,
 }: Props) {
-  const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
+  const slide = step?.content ?? question.slides[slideIndex] ?? question.slides[0] ?? {}
+  const answer = step ? step.answer : question.answer
   // Плашка справа: кто отвечает (со значком команды), или приглашение перехватить вопрос
   const badge = answeringTeam ? (
     <>
@@ -85,11 +90,24 @@ export default function ScreenQuestion({
         textClass={slide.media ? 'text-4xl' : 'text-6xl'}
         mediaClass={showAnswer ? 'max-h-[35vh] self-center' : 'max-h-[55vh] self-center'}
       />
-      {showAnswer && (
+      {step && step.options.length > 0 && (
+        <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(step.options.length, 2)}, minmax(0, 1fr))` }}>
+          {step.options.map((label, i) => (
+            <div key={i} className="flex items-center gap-5 rounded-xl bg-cell px-6 py-4 text-4xl font-semibold">
+              <span className="font-display text-accent">{LETTERS[i]}</span>
+              {label}
+            </div>
+          ))}
+        </div>
+      )}
+      {step?.summary && (
+        <div className="self-start rounded-xl border-[3px] border-accent bg-cell px-8 py-4 text-4xl font-semibold">{step.summary}</div>
+      )}
+      {showAnswer && answer && (answer.text || answer.media) && (
         <div className="rounded-xl border-2 border-white p-8">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
-          <div className="mt-2 text-5xl font-semibold">{question.answer.text}</div>
-          {question.answer.media && <MediaView media={question.answer.media} mode="hall" className="mt-4 max-h-[30vh]" />}
+          <div className="mt-2 text-5xl font-semibold">{answer.text}</div>
+          {answer.media && <MediaView media={answer.media} mode="hall" className="mt-4 max-h-[30vh]" />}
         </div>
       )}
     </div>
