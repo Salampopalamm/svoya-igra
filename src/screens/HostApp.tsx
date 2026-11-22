@@ -99,6 +99,7 @@ function withTeamScore(s: LiveState, teamId: string, change: (score: number) => 
 }
 
 // Закрыть вопрос: ячейка сыграна, ход переходит к следующей команде по кругу
+// (если вопрос открывали только посмотреть — ход остаётся у той же команды)
 function withClosed(s: LiveState): LiveState {
   return {
     ...withPlayed(s, s.current),
@@ -107,7 +108,8 @@ function withClosed(s: LiveState): LiveState {
     showAnswer: false,
     answeringTeamId: null,
     triedTeamIds: [],
-    turnTeamId: nextTeamId(s.game, s.turnTeamId),
+    viewOnly: false,
+    turnTeamId: s.viewOnly ? s.turnTeamId : nextTeamId(s.game, s.turnTeamId),
     timer: null,
     video: null,
     branch: null,
@@ -125,6 +127,7 @@ function openedQuestion(question: Question | undefined, theme: Theme): Partial<L
     slideIndex: 0,
     showAnswer: false,
     triedTeamIds: [],
+    viewOnly: false,
     timer: questionTimer(question, theme),
     video: null,
     branch: question?.tree ? startBranch(question.tree) : null,
@@ -235,10 +238,26 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     commit({ ...live, ...openedQuestion(question, game.theme), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
   }
 
+  // Клик по сыгранной (красной) ячейке: вопрос открывается только посмотреть — без «Верно / Неверно»
+  function handlePlayedClick(categoryId: string, questionId: string) {
+    if (previewMode) {
+      setPreview({ categoryId, questionId })
+      return
+    }
+    const { question } = find({ categoryId, questionId })
+    commit({
+      ...live,
+      ...openedQuestion(question, game.theme),
+      current: { categoryId, questionId },
+      answeringTeamId: null,
+      viewOnly: true,
+    })
+  }
+
   // Ветвящийся вопрос: ведущий нажал вариант. Баллы — сразу или одной суммой в конце ветки, следующий шаг.
   function chooseBranchOption(option: number) {
     const tree = currentCell.question?.tree
-    if (!tree || !live.branch || live.branch.done || !answeringTeamId) return
+    if (!tree || !live.branch || live.branch.done || !answeringTeamId || live.viewOnly) return
     const node = tree.nodes.find((n) => n.id === live.branch!.nodeId)
     const points = node?.options[option]?.points ?? 0
     const branch = chooseOption(tree, live.branch, option)
@@ -311,13 +330,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
   function handleCorrect(teamId: string) {
-    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || live.viewOnly || triedTeamIds.includes(teamId)) return
     commit(withClosed(withScore(live, teamId, value)))
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
-    if (!currentCell.question || currentCell.question.tree || triedTeamIds.includes(teamId)) return
+    if (!currentCell.question || currentCell.question.tree || live.viewOnly || triedTeamIds.includes(teamId)) return
     commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
   }
 
@@ -450,7 +469,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Кто отвечает сейчас (основная команда или перехват). Ошибившимся командам отвечать нельзя.
   function selectTeam(teamId: string | null) {
-    if (teamId && triedTeamIds.includes(teamId)) return
+    if (live.viewOnly || (teamId && triedTeamIds.includes(teamId))) return
     setLive((s) => ({ ...s, answeringTeamId: teamId }))
   }
 
@@ -951,6 +970,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             onSetTimerLength={setTimerLength}
             pinnedTimerSec={game.theme.pinnedTimerSec}
             onPinTimer={pinTimer}
+            viewOnly={!!live.viewOnly}
             onTimeUp={() => {
               if (game.theme.sounds.enabled) playTimeUp()
             }}
@@ -993,7 +1013,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           onShowQuestion={finalShowQuestion}
         />
       ) : (
-        <Board round={round} onCellClick={handleCellClick} unlockedIds={unlockedIds} onLockedClick={handleLockedClick} />
+        <Board
+          round={round}
+          onCellClick={handleCellClick}
+          onPlayedClick={handlePlayedClick}
+          unlockedIds={unlockedIds}
+          onLockedClick={handleLockedClick}
+        />
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">

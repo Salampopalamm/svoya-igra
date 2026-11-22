@@ -8,10 +8,18 @@ type Props = {
   onCellClick?: (categoryId: string, questionId: string) => void
   unlockedIds?: string[] // скрытые вопросы, которые уже открыли (деревом или ведущим)
   onLockedClick?: (categoryId: string, questionId: string) => void // пульт: ведущий нажал скрытую ячейку
+  onPlayedClick?: (categoryId: string, questionId: string) => void // пульт: ведущий нажал сыгранную ячейку
 }
 
 // Табло: категории строками, номиналы справа от названия категории.
-export default function Board({ round, interactive = true, onCellClick, unlockedIds = [], onLockedClick }: Props) {
+export default function Board({
+  round,
+  interactive = true,
+  onCellClick,
+  unlockedIds = [],
+  onLockedClick,
+  onPlayedClick,
+}: Props) {
   // Ячейки стоят по порядку, а не по цене: в строке могут быть и 100…800, и восемь «400».
   // Колонок столько, сколько вопросов в самой длинной категории.
   const columns = Math.max(0, ...round.categories.map((c) => c.questions.length))
@@ -34,9 +42,35 @@ export default function Board({ round, interactive = true, onCellClick, unlocked
           {positions.map((i) => {
             const question = sortByValue(category.questions)[i]
 
-            // Сыгранный или отсутствующий вопрос — пустая пунктирная ячейка
-            if (!question || question.played) {
+            // Отсутствующий вопрос — пустая пунктирная ячейка
+            if (!question) {
               return <div key={i} className="min-h-20 rounded-xl border-2 border-dashed border-line" />
+            }
+
+            // Сыгранный вопрос остаётся на табло красным; на пульте его можно открыть, чтобы показать ещё раз
+            if (question.played) {
+              const playedClass =
+                '@container flex min-h-20 items-center justify-center rounded-xl border-2 border-played bg-played/25 font-display text-white/70'
+              const playedLabel = <span className="text-[min(1.875rem,20cqw)]">{question.value}</span>
+              if (!interactive || !onPlayedClick) {
+                return (
+                  <div key={question.id} className={playedClass} aria-label={`${question.value} — сыгран`}>
+                    {playedLabel}
+                  </div>
+                )
+              }
+              return (
+                <button
+                  key={question.id}
+                  type="button"
+                  onClick={() => onPlayedClick(category.id, question.id)}
+                  title="Уже сыгран — открыть только посмотреть (счёт не изменится)"
+                  aria-label={`${question.value} — сыгран, открыть для показа`}
+                  className={`${playedClass} transition hover:bg-played hover:text-white`}
+                >
+                  {playedLabel}
+                </button>
+              )
             }
             const value = question.value
             const locked = question.hidden && !unlockedIds.includes(question.id)

@@ -28,6 +28,7 @@ type Props = {
   onSetTimerLength: (sec: number | null) => void // ведущий выбрал время (null — без таймера)
   pinnedTimerSec?: number // закреплённое время: ставится на каждый вопрос
   onPinTimer: (sec: number | null) => void // закрепить время (null — открепить)
+  viewOnly?: boolean // сыгранный вопрос открыт только посмотреть: кнопок «Верно / Неверно» нет
   onTimeUp: () => void // время вышло — сигнал
   final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
   branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
@@ -195,6 +196,7 @@ export default function QuestionView({
   onSetTimerLength,
   pinnedTimerSec,
   onPinTimer,
+  viewOnly,
   onTimeUp,
   final,
   branch,
@@ -229,7 +231,9 @@ export default function QuestionView({
             </>
           )}
         </span>
-        <span className="text-sm text-muted">в зале сейчас этот вопрос</span>
+        <span className="text-sm text-muted">
+          {viewOnly ? 'уже сыгран · в зале — только для показа' : 'в зале сейчас этот вопрос'}
+        </span>
       </div>
 
       {branch ? (
@@ -304,7 +308,16 @@ export default function QuestionView({
         )}
       </div>
 
-      {branch?.bottom ?? final ?? (
+      {viewOnly ? (
+        <div className="mt-auto flex flex-wrap items-center gap-4 rounded-xl border-2 border-played p-4">
+          <span className="min-w-0 flex-1 text-lg">
+            Этот вопрос уже сыгран. Он открыт только посмотреть — счёт и ход не меняются.
+          </span>
+          <button type="button" onClick={onClose} className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90">
+            Вернуться к табло · Esc
+          </button>
+        </div>
+      ) : branch?.bottom ?? final ?? (
       <div className="mt-auto flex flex-col gap-3">
         <div className="text-xl font-semibold" aria-live="polite">
           {status}
