@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useRef, type CSSProperties } from 'react'
+import { columnsOf, contentMedia, layoutOf } from '../pictures'
 import type { Content, MediaRef } from '../types'
 import { useMediaUrl } from '../useMediaUrl'
 import { useFollowVideo, useVideoControl } from '../videoControl'
@@ -123,16 +124,62 @@ function HostVideo({ media, url, className }: { media: MediaRef; url: string; cl
 }
 
 // Один слайд: текст и/или файл
-export function SlideView({ slide, mode, textClass, mediaClass }: {
+export function SlideView({ slide, mode, textClass, mediaClass, gridHeight }: {
   slide: Content
   mode: MediaMode
   textClass: string // размер текста: в зале крупнее, на пульте мельче
   mediaClass: string // высота картинки
+  gridHeight?: string // высота блока, если картинок несколько (CSS)
 }) {
   return (
     <div className="flex flex-col gap-6">
       {slide.text && <p className={`leading-tight font-semibold ${textClass}`}>{slide.text}</p>}
-      {slide.media && <MediaView media={slide.media} mode={mode} className={mediaClass} />}
+      <ContentMedia content={slide} mode={mode} className={mediaClass} gridHeight={gridHeight} />
+    </div>
+  )
+}
+
+// Файлы слайда или ответа: один — как обычно, несколько картинок — по выбранному шаблону
+export function ContentMedia({ content, mode, className, gridHeight = '40vh' }: {
+  content: Content
+  mode: MediaMode
+  className: string // для одного файла: высота и выравнивание
+  gridHeight?: string // для нескольких: высота всего блока (CSS)
+}) {
+  const pictures = contentMedia(content)
+  const count = pictures.length
+  if (count === 0) return null
+  if (count === 1) return <MediaView media={pictures[0]} mode={mode} className={className} />
+
+  const layout = layoutOf(content)
+  const cell = (media: MediaRef, i: number, style: CSSProperties) => (
+    <div key={`${media.id}-${i}`} className="flex min-h-0 min-w-0 items-center justify-center" style={style}>
+      <MediaView media={media} mode={mode} className="max-h-full max-w-full" />
+    </div>
+  )
+
+  // Большая картинка слева на всю высоту, остальные — столбиком справа
+  if (layout === 'big-left') {
+    return (
+      <div
+        className="grid w-full gap-3"
+        style={{ height: gridHeight, gridTemplateColumns: '2fr 1fr', gridTemplateRows: `repeat(${count - 1}, minmax(0, 1fr))` }}
+      >
+        {pictures.map((m, i) => cell(m, i, i === 0 ? { gridRow: `1 / span ${count - 1}` } : {}))}
+      </div>
+    )
+  }
+
+  // По N в ряд; неполный последний ряд — по центру
+  const cols = columnsOf(layout)
+  const rows = Math.ceil(count / cols)
+  const size = {
+    width: `calc((100% - ${cols - 1} * 0.75rem) / ${cols})`,
+    height: `calc((100% - ${rows - 1} * 0.75rem) / ${rows})`,
+  }
+  return (
+    <div className="flex w-full flex-wrap content-center justify-center gap-3" style={{ height: gridHeight }}>
+      {pictures.map((m, i) => cell(m, i, size))}
     </div>
   )
 }

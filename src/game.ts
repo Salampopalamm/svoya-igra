@@ -1,3 +1,4 @@
+import { contentMedia } from './pictures'
 import { treeContents, treeProblems } from './tree'
 import type { Category, Content, Game, MediaRef, Player, Question, Round, Team } from './types'
 
@@ -145,7 +146,7 @@ export function questionContents(question: Question): Content[] {
 
 // id всех файлов вопроса — чтобы удалить их из хранилища вместе с вопросом
 export function mediaIdsOf(question: Question): string[] {
-  return questionContents(question).flatMap((c) => (c.media ? [c.media.id] : []))
+  return questionContents(question).flatMap((c) => contentMedia(c).map((m) => m.id))
 }
 
 // Есть ли в вопросе хоть что-то (текст или файл)
@@ -339,7 +340,7 @@ export function allMediaRefs(game: Game): MediaRef[] {
   const { logo, background, sounds } = game.theme
   const contents = allQuestions(game).flatMap(questionContents)
   return [
-    ...contents.map((c) => c.media),
+    ...contents.flatMap(contentMedia),
     ...game.players.map((p) => p.photo),
     ...game.teams.map((t) => t.logo),
     logo,

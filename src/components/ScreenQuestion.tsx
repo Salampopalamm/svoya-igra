@@ -1,7 +1,7 @@
 import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
-import { MediaView, SlideView } from './MediaView'
+import { ContentMedia, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
 import { LETTERS } from '../tree'
 
@@ -88,6 +88,7 @@ export default function ScreenQuestion({
           Высоту картинок меняет ползунок «Картинки и видео» (--media-scale) */}
       <SlideView
         slide={showAnswer && answer?.media ? { text: slide.text } : slide}
+        gridHeight={showAnswer ? 'calc(35vh * var(--media-scale, 1))' : 'calc(55vh * var(--media-scale, 1))'}
         mode="hall"
         textClass={showAnswer || slide.media ? 'text-4xl' : 'text-6xl'}
         mediaClass={
@@ -113,9 +114,12 @@ export default function ScreenQuestion({
         <div className="flex flex-col gap-4 rounded-xl border-2 border-white p-8">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
           {answer.text && <div className="text-5xl font-semibold">{answer.text}</div>}
-          {answer.media && (
-            <MediaView media={answer.media} mode="hall" className="max-h-[calc(50vh*var(--media-scale,1))] self-center" />
-          )}
+          <ContentMedia
+            content={answer}
+            mode="hall"
+            className="max-h-[calc(50vh*var(--media-scale,1))] self-center"
+            gridHeight="calc(50vh * var(--media-scale, 1))"
+          />
         </div>
       )}
     </div>

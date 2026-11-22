@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { contentMedia } from '../pictures'
 import {
   correctnessOptions,
   LETTERS,
@@ -55,7 +56,7 @@ export default function TreeEditor({ tree, value, hiddenQuestions, onChange, onM
   function deleteStep(node: TreeNode) {
     const filled = node.content.text?.trim() || node.content.media || node.options.length > 0
     if (filled && !window.confirm(`Удалить шаг ${stepNumber(tree, node.id)}? Варианты, которые вели сюда, будут вести к концу ветки.`)) return
-    for (const c of [node.content, node.answer]) if (c?.media) onMediaRemoved(c.media.id)
+    for (const c of [node.content, node.answer]) for (const m of c ? contentMedia(c) : []) onMediaRemoved(m.id)
     onChange((t) => removeStep(t, node.id))
   }
 
@@ -109,7 +110,7 @@ export default function TreeEditor({ tree, value, hiddenQuestions, onChange, onM
           onChangeContent={(change) => changeStep(node.id, (n) => ({ ...n, content: change(n.content) }))}
           onChangeAnswer={(change) => changeStep(node.id, (n) => ({ ...n, answer: change(n.answer ?? {}) }))}
           onRemoveAnswer={() => {
-            if (node.answer?.media) onMediaRemoved(node.answer.media.id)
+            for (const m of node.answer ? contentMedia(node.answer) : []) onMediaRemoved(m.id)
             changeStep(node.id, (n) => ({ ...n, answer: undefined }))
           }}
           onAddAnswer={() => changeStep(node.id, (n) => ({ ...n, answer: {} }))}

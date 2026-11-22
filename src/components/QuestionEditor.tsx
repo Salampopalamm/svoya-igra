@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { questionProblem, type HiddenChoice } from '../game'
+import { contentMedia } from '../pictures'
 import { newTree, treeContents } from '../tree'
 import type { Content, Question } from '../types'
 import { ContentEditor, SmallButton } from './ContentEditor'
@@ -63,9 +64,9 @@ export default function QuestionEditor({
   }
 
   function removeSlide(index: number) {
-    const media = slides[index]?.media
+    const files = slides[index] ? contentMedia(slides[index]) : []
     onChange((q) => (q.slides.length > 1 ? { ...q, slides: q.slides.filter((_, i) => i !== index) } : q))
-    if (media) onMediaRemoved(media.id)
+    for (const m of files) onMediaRemoved(m.id)
   }
 
   // Обычный вопрос ↔ ветвящийся. Дерево начинается с того, что уже есть в вопросе (первый слайд и ответ).
@@ -77,7 +78,7 @@ export default function QuestionEditor({
     }
     const tree = question.tree!
     if (tree.nodes.length > 1 && !window.confirm(`Убрать дерево? Его шаги (${tree.nodes.length}) удалятся, останутся слайды и ответ вопроса. Это нельзя отменить.`)) return
-    for (const c of treeContents(tree)) if (c.media) onMediaRemoved(c.media.id)
+    for (const c of treeContents(tree)) for (const m of contentMedia(c)) onMediaRemoved(m.id)
     onChange((q) => ({ ...q, tree: undefined }))
   }
 

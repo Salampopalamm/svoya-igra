@@ -9,7 +9,15 @@ export type MediaRef = { id: string; type: MediaType; name: string }
 export type MediaFile = { id: string; type: MediaType; name: string; blob: Blob }
 
 // Текст и/или файл: слайд вопроса, ответ, узел дерева
-export type Content = { text?: string; media?: MediaRef }
+export type Content = {
+  text?: string
+  media?: MediaRef // первый (или единственный) файл
+  more?: MediaRef[] // ещё картинки рядом с первой (только если первая — картинка; всего до 8, функции — pictures.ts)
+  layout?: PictureLayout // как расставить несколько картинок; пусто — по их числу
+}
+
+// Шаблон для нескольких картинок: по 1–4 в ряд или одна большая слева и остальные справа
+export type PictureLayout = 'cols-1' | 'cols-2' | 'cols-3' | 'cols-4' | 'big-left'
 
 export type Theme = {
   logo?: MediaRef

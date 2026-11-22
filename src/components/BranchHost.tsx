@@ -1,7 +1,7 @@
 import { formatPoints, LETTERS, stepById, stepNumber, type BranchState } from '../tree'
 import type { HiddenChoice } from '../game'
 import type { QuestionTree, Team } from '../types'
-import { MediaView, SlideView } from './MediaView'
+import { ContentMedia, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
 
 // Ветвящийся вопрос на пульте. Верх (BranchBody) — текущий шаг и его ответ, низ (BranchControls) —
@@ -24,7 +24,7 @@ export function BranchBody({ tree, branch, showAnswer, onShowAnswer }: {
           <div className="flex-1">
             <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ НА ЭТОТ ШАГ · ВИДИТ ТОЛЬКО ВЕДУЩИЙ</div>
             <div className="mt-1 text-3xl font-semibold">{node.answer.text}</div>
-            {node.answer.media && <MediaView media={node.answer.media} mode="host" className="mt-3 max-h-48" />}
+            <ContentMedia content={node.answer} mode="host" className="mt-3 max-h-48" gridHeight="12rem" />
           </div>
           {showAnswer ? (
             <span className="text-muted">Ответ показан в зале</span>

@@ -1,7 +1,7 @@
 import { finalThemes, isValidBet, participants, remainingThemes, remover } from '../final'
 import type { FinalState } from '../live'
 import type { Game, Round } from '../types'
-import { MediaView } from './MediaView'
+import { ContentMedia } from './MediaView'
 import TeamIcon from './TeamIcon'
 
 // Финал в зале: убирание тем, ставки (только кто поставил — суммы не видны) и итоги.
@@ -101,7 +101,7 @@ export default function FinalScreen({ game, round, final }: { game: Game; round:
         <div className="rounded-xl border-2 border-white p-8">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
           <div className="mt-2 text-5xl font-semibold">{answer.text}</div>
-          {answer.media && <MediaView media={answer.media} mode="hall" className="mt-4 max-h-[30vh]" />}
+          <ContentMedia content={answer} mode="hall" className="mt-4 max-h-[30vh]" gridHeight="30vh" />
         </div>
       )}
     </div>

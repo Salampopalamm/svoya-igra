@@ -2,7 +2,8 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
-import { MediaView, SlideView } from './MediaView'
+import { plural } from '../plural'
+import { ContentMedia, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
 
 type Props = {
@@ -37,7 +38,11 @@ type Props = {
 // Короткая подсказка ведущему, что покажет следующий слайд
 function describeSlide(slide: Content) {
   const kinds = { image: 'картинка', gif: 'GIF', video: 'видео', audio: 'музыка' }
-  const parts = [slide.media && `${kinds[slide.media.type]} «${slide.media.name}»`, slide.text && `«${slide.text}»`]
+  const count = (slide.more?.length ?? 0) + 1
+  const parts = [
+    slide.media && (count > 1 ? `${count} ${plural(count, 'картинка', 'картинки', 'картинок')}` : `${kinds[slide.media.type]} «${slide.media.name}»`),
+    slide.text && `«${slide.text}»`,
+  ]
   return parts.filter(Boolean).join(' + ')
 }
 
@@ -271,7 +276,7 @@ export default function QuestionView({
         <div className="flex-1">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ · ВИДИТ ТОЛЬКО ВЕДУЩИЙ</div>
           <div className="mt-1 text-3xl font-semibold">{question.answer.text}</div>
-          {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
+          <ContentMedia content={question.answer} mode="host" className="mt-3 max-h-48" gridHeight="12rem" />
         </div>
         {final ? (
           <span className="text-muted">Зал увидит ответ вместе с итогами</span>

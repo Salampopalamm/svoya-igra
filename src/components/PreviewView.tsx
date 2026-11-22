@@ -1,5 +1,5 @@
 import type { Question } from '../types'
-import { MediaView, SlideView } from './MediaView'
+import { ContentMedia, SlideView } from './MediaView'
 
 type Props = {
   categoryTitle: string
@@ -30,7 +30,7 @@ export default function PreviewView({ categoryTitle, question, onClose }: Props)
       <div className="rounded-xl border-2 border-dashed border-muted p-5">
         <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
         <div className="mt-2 text-2xl font-semibold">{question.answer.text}</div>
-        {question.answer.media && <MediaView media={question.answer.media} mode="host" className="mt-3 max-h-48" />}
+        <ContentMedia content={question.answer} mode="host" className="mt-3 max-h-48" gridHeight="12rem" />
       </div>
       {(question.timerSec || question.hostNote) && (
         <div className="flex flex-col gap-1 rounded-xl border border-line p-5">
