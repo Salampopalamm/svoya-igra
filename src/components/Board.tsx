@@ -9,6 +9,7 @@ type Props = {
   unlockedIds?: string[] // скрытые вопросы, которые уже открыли (деревом или ведущим)
   onLockedClick?: (categoryId: string, questionId: string) => void // пульт: ведущий нажал скрытую ячейку
   onPlayedClick?: (categoryId: string, questionId: string) => void // пульт: ведущий нажал сыгранную ячейку
+  onHallClick?: (categoryId: string, questionId: string) => void // зал с «Мышь в зале»: нажали обычную ячейку
 }
 
 // Табло: категории строками, номиналы справа от названия категории.
@@ -19,6 +20,7 @@ export default function Board({
   unlockedIds = [],
   onLockedClick,
   onPlayedClick,
+  onHallClick,
 }: Props) {
   // Ячейки стоят по порядку, а не по цене: в строке могут быть и 100…800, и восемь «400».
   // Колонок столько, сколько вопросов в самой длинной категории.
@@ -105,6 +107,19 @@ export default function Board({
             const label = <span className="text-[min(1.875rem,20cqw)]">{value}</span>
 
             if (!interactive) {
+              // Зал, «Мышь в зале» включена: ячейку можно нажать прямо на проекторе
+              if (onHallClick) {
+                return (
+                  <button
+                    key={question.id}
+                    type="button"
+                    onClick={() => onHallClick(category.id, question.id)}
+                    className={`${cellClass} cursor-pointer transition hover:bg-accent hover:text-on-accent`}
+                  >
+                    {label}
+                  </button>
+                )
+              }
               return (
                 <div key={question.id} className={cellClass}>
                   {label}

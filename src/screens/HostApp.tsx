@@ -31,6 +31,7 @@ import {
   startTimer,
   type Current,
   type LiveState,
+  type HallAction,
   type HallStatus,
   type Message,
 } from '../live'
@@ -169,6 +170,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
+  const hallActionRef = useRef<(action: HallAction) => void>(() => undefined) // свежий обработчик нажатий из зала
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
   const unlockedIds = live.unlockedIds ?? []
@@ -188,6 +190,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.data.type === 'hello') channel.postMessage({ type: 'state', state: liveRef.current } satisfies Message)
       if (e.data.type === 'hall') setHallStatus(e.data.status)
       if (e.data.type === 'hall-media') setHallMedia({ done: e.data.done, total: e.data.total })
+      if (e.data.type === 'hall-action') hallActionRef.current(e.data.action)
     }
     return () => {
       channel.close()
@@ -232,9 +235,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
+    openCell(categoryId, questionId)
+  }
+
+  // Сыграть вопрос: первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
+  function openCell(categoryId: string, questionId: string) {
     // В репетиции «Следующий вопрос» продолжит с этой ячейки
     if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
-    // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
     const { question } = find({ categoryId, questionId })
     commit({ ...live, ...openedQuestion(question, game.theme), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
   }
@@ -491,6 +498,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     void updateStoredGame(game.id, (g) => ({ ...g, theme: { ...g.theme, ...patch } }))
   }
 
+  function toggleHallMouse() {
+    setLive((s) => ({ ...s, hallMouse: !s.hallMouse }))
+  }
+
   function toggleScreenHidden() {
     setLive((s) => ({ ...s, screenHidden: !s.screenHidden }))
   }
@@ -557,6 +568,46 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     setHistory([])
     setPreview(null)
   }
+
+  // Ведущий нажал мышью на экране зала (включено «Мышь в зале»): делаем то же, что кнопки пульта
+  function handleHallAction(action: HallAction) {
+    if (!live.hallMouse || live.screenHidden) return
+    const tree = currentCell.question?.tree
+    switch (action.kind) {
+      case 'open': {
+        if (current || isFinal) return
+        const { question } = find(action)
+        // Сыгранные и скрытые ячейки из зала не открываются
+        if (!question || question.played || (question.hidden && !unlockedIds.includes(question.id))) return
+        openCell(action.categoryId, action.questionId)
+        return
+      }
+      case 'slide':
+        if (current) goToSlide(action.delta)
+        return
+      case 'timer':
+        if (current) toggleTimer()
+        return
+      case 'answer':
+        if (current && !showAnswer && !isFinal) showAnswerInHall()
+        return
+      case 'team':
+        if (current && !isFinal && !tree) selectTeam(action.teamId)
+        return
+      case 'correct':
+        if (answeringTeamId && !isFinal && !tree) handleCorrect(answeringTeamId)
+        return
+      case 'wrong':
+        if (answeringTeamId && !isFinal && !tree) handleWrong(answeringTeamId)
+        return
+      case 'close':
+        if (current && !isFinal) closeQuestion()
+        return
+    }
+  }
+  useEffect(() => {
+    hallActionRef.current = handleHallAction
+  })
 
   // Горячие клавиши
   useEffect(() => {
@@ -705,6 +756,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         return (
           <button type="button" onClick={toggleScreenHidden} aria-pressed={screenHidden} className={toggleClass(screenHidden)}>
             {screenHidden ? 'Экран зала скрыт · H' : 'Скрыть экран зала · H'}
+          </button>
+        )
+      case 'hall-mouse':
+        return (
+          <button
+            type="button"
+            onClick={toggleHallMouse}
+            aria-pressed={!!live.hallMouse}
+            title="Выбирать вопросы и вести игру мышкой прямо на экране зала"
+            className={toggleClass(!!live.hallMouse)}
+          >
+            Мышь в зале: {live.hallMouse ? 'вкл' : 'выкл'}
           </button>
         )
       case 'how-to':

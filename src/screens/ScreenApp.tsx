@@ -6,12 +6,13 @@ import { GameLogo, HallFrame } from '../components/HallFrame'
 import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
+import HallMousePanel from '../components/HallMousePanel'
 import { MediaView } from '../components/MediaView'
 import { finalStateOf, remover } from '../final'
 import { formatPoints, stepById, type BranchState } from '../tree'
 import type { QuestionTree } from '../types'
 import { roundById } from '../game'
-import { CHANNEL, type HallStatus, type LiveState, type Message } from '../live'
+import { CHANNEL, type HallAction, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
@@ -120,6 +121,11 @@ export default function ScreenApp() {
   const activeLabel = final ? 'УБИРАЕТ' : questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
   const outTeamIds = questionOpen ? triedTeamIds : []
 
+  // «Мышь в зале»: нажатия на экране зала уходят на пульт, игру меняет он
+  function act(action: HallAction) {
+    channelRef.current?.postMessage({ type: 'hall-action', action } satisfies Message)
+  }
+
   // Ветвящийся вопрос: какой шаг показывать, его варианты и (в конце) итог ветки
   const branchNode = question?.tree && live.branch ? stepById(question.tree, live.branch.nodeId) : undefined
   const step =
@@ -156,7 +162,12 @@ export default function ScreenApp() {
     ) : (
       // Размер табло — ползунок «Табло» (CSS zoom увеличивает ячейки и надписи целиком)
       <div className="[zoom:var(--board-scale,1)]">
-        <Board round={round} interactive={false} unlockedIds={live.unlockedIds ?? []} />
+        <Board
+          round={round}
+          interactive={false}
+          unlockedIds={live.unlockedIds ?? []}
+          onHallClick={live.hallMouse ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
+        />
       </div>
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
@@ -183,6 +194,20 @@ export default function ScreenApp() {
             <MediaView media={live.shownMedia} mode="hall" className="max-h-full max-w-full" />
           </VideoContext.Provider>
         </div>
+      )}
+      {live.hallMouse && question && (
+        <HallMousePanel
+          question={question}
+          slideIndex={slideIndex}
+          showAnswer={showAnswer}
+          teams={game.teams}
+          answeringTeam={answeringTeam}
+          triedTeamIds={triedTeamIds}
+          timer={live.timer ?? null}
+          scoring={!final && !question.tree && !live.viewOnly}
+          final={!!final}
+          onAction={act}
+        />
       )}
       <header className="flex items-center justify-between">
         <GameLogo
