@@ -114,13 +114,18 @@ function withClosed(s: LiveState): LiveState {
   }
 }
 
+// Таймер вопроса: закреплённое на пульте время (📌) важнее времени из редактора
+function questionTimer(question: Question | undefined, theme: Theme) {
+  return newTimer(theme.pinnedTimerSec ?? question?.timerSec)
+}
+
 // Только что открытый вопрос: первый слайд, ответ скрыт, таймер ждёт запуска, ветвящийся — на первом шаге
-function openedQuestion(question: Question | undefined): Partial<LiveState> {
+function openedQuestion(question: Question | undefined, theme: Theme): Partial<LiveState> {
   return {
     slideIndex: 0,
     showAnswer: false,
     triedTeamIds: [],
-    timer: newTimer(question?.timerSec),
+    timer: questionTimer(question, theme),
     video: null,
     branch: question?.tree ? startBranch(question.tree) : null,
   }
@@ -227,7 +232,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
     // Первой отвечает команда, чей ход. Таймер вопроса ждёт, пока ведущий его запустит.
     const { question } = find({ categoryId, questionId })
-    commit({ ...live, ...openedQuestion(question), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
+    commit({ ...live, ...openedQuestion(question, game.theme), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
   }
 
   // Ветвящийся вопрос: ведущий нажал вариант. Баллы — сразу или одной суммой в конце ветки, следующий шаг.
@@ -246,7 +251,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       unlockedIds: unlockable ? [...unlockedIds, unlock] : unlockedIds,
       branch,
       showAnswer: false,
-      timer: newTimer(currentCell.question?.timerSec),
+      timer: questionTimer(currentCell.question, game.theme),
       video: null,
     })
   }
@@ -422,7 +427,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Если таймера у вопроса нет — запускаем на стандартное время.
   function toggleTimer() {
     setLive((s) => {
-      const timer = s.timer ?? newTimer(DEFAULT_TIMER_SEC)
+      const timer = s.timer ?? newTimer(s.game.theme.pinnedTimerSec ?? DEFAULT_TIMER_SEC)
       if (!s.current || !timer) return s
       return { ...s, timer: timer.endsAt === null ? startTimer(timer) : pauseTimer(timer) }
     })
@@ -431,6 +436,11 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Ведущий выбрал время таймера (null — убрать таймер из зала). Таймер встаёт на начало и ждёт запуска.
   function setTimerLength(sec: number | null) {
     setLive((s) => (s.current ? { ...s, timer: newTimer(sec ?? undefined) } : s))
+  }
+
+  // Закрепить время таймера на всю игру (null — открепить). Это настройка игры: запоминаем в хранилище.
+  function pinTimer(sec: number | null) {
+    changeTheme({ pinnedTimerSec: sec ?? undefined })
   }
 
   // Таймер сначала (например, для перехвата)
@@ -512,7 +522,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       ?.questions.find((q) => q.id === cell.questionId)
     commit({
       ...live,
-      ...openedQuestion(question),
+      ...openedQuestion(question, game.theme),
       roundId: cell.roundId,
       current: { categoryId: cell.categoryId, questionId: cell.questionId },
       answeringTeamId: turnTeamId,
@@ -939,6 +949,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             onToggleTimer={toggleTimer}
             onResetTimer={resetTimer}
             onSetTimerLength={setTimerLength}
+            pinnedTimerSec={game.theme.pinnedTimerSec}
+            onPinTimer={pinTimer}
             onTimeUp={() => {
               if (game.theme.sounds.enabled) playTimeUp()
             }}

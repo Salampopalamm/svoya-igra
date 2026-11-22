@@ -26,6 +26,8 @@ type Props = {
   onToggleTimer: () => void
   onResetTimer: () => void
   onSetTimerLength: (sec: number | null) => void // ведущий выбрал время (null — без таймера)
+  pinnedTimerSec?: number // закреплённое время: ставится на каждый вопрос
+  onPinTimer: (sec: number | null) => void // закрепить время (null — открепить)
   onTimeUp: () => void // время вышло — сигнал
   final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
   branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
@@ -43,11 +45,13 @@ const MAX_TIMER_SEC = 600
 
 // Таймер на пульте: выбор времени, «Запустить / Пауза» (T) и «Сначала». Зал видит то же время.
 // Нет таймера — зал его не видит, ведущий может выбрать время прямо сейчас.
-function HostTimer({ timer, onToggle, onReset, onSetLength, onTimeUp }: {
+function HostTimer({ timer, onToggle, onReset, onSetLength, pinnedSec, onPin, onTimeUp }: {
   timer: TimerState | null
   onToggle: () => void
   onReset: () => void
   onSetLength: (sec: number | null) => void
+  pinnedSec?: number
+  onPin: (sec: number | null) => void
   onTimeUp: () => void
 }) {
   const left = useTimeLeft(timer)
@@ -141,6 +145,28 @@ function HostTimer({ timer, onToggle, onReset, onSetLength, onTimeUp }: {
           </button>
         )}
       </div>
+
+      {/* Закрепить: это время будет ставиться на каждый следующий вопрос, пока не открепите */}
+      {pinnedSec && (!timer || timer.totalSec === pinnedSec) ? (
+        <button
+          type="button"
+          onClick={() => onPin(null)}
+          aria-pressed
+          title="Сейчас это время ставится на каждый вопрос. Нажмите, чтобы открепить"
+          className="h-11 rounded-lg bg-white px-3 text-sm font-semibold text-black hover:opacity-90"
+        >
+          📌 {pinnedSec} с на все вопросы · открепить
+        </button>
+      ) : timer ? (
+        <button
+          type="button"
+          onClick={() => onPin(timer.totalSec)}
+          title="Это время будет ставиться на каждый вопрос, даже если в редакторе задано другое"
+          className="h-11 rounded-lg border border-line px-3 text-sm hover:bg-cell"
+        >
+          📌 Закрепить {timer.totalSec} с{pinnedSec ? ` (сейчас ${pinnedSec} с)` : ''}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -167,6 +193,8 @@ export default function QuestionView({
   onToggleTimer,
   onResetTimer,
   onSetTimerLength,
+  pinnedTimerSec,
+  onPinTimer,
   onTimeUp,
   final,
   branch,
@@ -264,6 +292,8 @@ export default function QuestionView({
           onToggle={onToggleTimer}
           onReset={onResetTimer}
           onSetLength={onSetTimerLength}
+          pinnedSec={pinnedTimerSec}
+          onPin={onPinTimer}
           onTimeUp={onTimeUp}
         />
         {question.hostNote && (

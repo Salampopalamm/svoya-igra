@@ -21,6 +21,9 @@ export type Theme = {
   showPhotos: boolean // false = фото свёрнуты, только имена
   grayscaleMedia: boolean
   sounds: { correct?: MediaRef; wrong?: MediaRef; enabled: boolean }
+  // Время таймера, закреплённое ведущим на пульте (📌): ставится на каждый вопрос,
+  // даже если в редакторе у вопроса своё время. Пусто — у каждого вопроса своё.
+  pinnedTimerSec?: number
 }
 
 export type Player = {
