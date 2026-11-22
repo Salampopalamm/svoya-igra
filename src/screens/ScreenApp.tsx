@@ -154,7 +154,10 @@ export default function ScreenApp() {
     ) : final ? (
       <FinalScreen game={game} round={round} final={final} />
     ) : (
-      <Board round={round} interactive={false} unlockedIds={live.unlockedIds ?? []} />
+      // Размер табло — ползунок «Табло» (CSS zoom увеличивает ячейки и надписи целиком)
+      <div className="[zoom:var(--board-scale,1)]">
+        <Board round={round} interactive={false} unlockedIds={live.unlockedIds ?? []} />
+      </div>
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
@@ -207,26 +210,31 @@ export default function ScreenApp() {
       </header>
 
       {photosView ? (
-        <div className="grid flex-1 gap-8" style={{ gridTemplateColumns: 'minmax(0, 1fr) 380px' }}>
+        // Колонка команд шире или уже вместе с ползунком «Команды и счёт», внутри всё увеличено так же
+        <div className="grid flex-1 gap-8" style={{ gridTemplateColumns: 'minmax(0, 1fr) calc(380px * var(--teams-scale, 1))' }}>
           <div className="flex flex-col">{main}</div>
-          <TeamsColumn
+          <div className="[zoom:var(--teams-scale,1)]">
+            <TeamsColumn
             teams={game.teams}
             players={game.players}
             activeTeamId={activeTeamId}
             activeLabel={activeLabel}
             outTeamIds={outTeamIds}
             showPhotos={game.theme.showPhotos}
-          />
+            />
+          </div>
         </div>
       ) : (
         <>
           {main}
-          <Scoreboard
-            teams={game.teams}
-            activeTeamId={activeTeamId}
-            activeLabel={activeLabel}
-            outTeamIds={outTeamIds}
-          />
+          <div className="[zoom:var(--teams-scale,1)]">
+            <Scoreboard
+              teams={game.teams}
+              activeTeamId={activeTeamId}
+              activeLabel={activeLabel}
+              outTeamIds={outTeamIds}
+            />
+          </div>
         </>
       )}
     </HallFrame>

@@ -15,6 +15,7 @@ export type ControlId =
   | 'tone'
   | 'font'
   | 'grayscale'
+  | 'sizes'
   | 'team-view'
   | 'photos'
   | 'timer-sound'
@@ -22,7 +23,7 @@ export type ControlId =
 export const CONTROL_GROUPS: { title: string; ids: ControlId[] }[] = [
   { title: 'Игра', ids: ['preview', 'undo', 'teams', 'rehearsal', 'reset'] },
   { title: 'Экран зала', ids: ['open-screen', 'hide-screen', 'how-to'] },
-  { title: 'Оформление зала', ids: ['tone', 'font', 'grayscale'] },
+  { title: 'Оформление зала', ids: ['tone', 'font', 'grayscale', 'sizes'] },
   { title: 'Команды в зале', ids: ['team-view', 'photos'] },
   { title: 'Звук', ids: ['timer-sound'] },
 ]
@@ -40,6 +41,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
   tone: 'Фон зала',
   font: 'Шрифт',
   grayscale: 'Обесцветить медиа',
+  sizes: 'Размеры в зале',
   'team-view': 'Вид команд',
   photos: 'Свернуть фото',
   'timer-sound': 'Звук таймера',

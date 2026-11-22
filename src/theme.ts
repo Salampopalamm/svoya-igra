@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react'
-import type { Theme } from './types'
+import type { HallSizes, Theme } from './types'
 
 // Оформление экрана зала: тон фона, шрифт заголовков, фирменный акцент.
 // Всё задаётся CSS-переменными на корне экрана — классы Tailwind (bg-bg, text-white, bg-accent…) подхватывают их сами.
@@ -25,6 +25,22 @@ export const FONTS: { family: string; note: string }[] = [
   { family: 'JetBrains Mono', note: 'терминал' },
   { family: 'Jura', note: 'космос' },
 ]
+
+// Размеры на экране зала: ползунки от 50 до 200%, шаг 10
+export const SIZE_MIN = 50
+export const SIZE_MAX = 200
+export const SIZE_STEP = 10
+
+export const SIZE_NAMES: { id: keyof HallSizes; name: string }[] = [
+  { id: 'board', name: 'Табло' },
+  { id: 'teams', name: 'Команды и счёт' },
+  { id: 'photos', name: 'Фото игроков' },
+  { id: 'media', name: 'Картинки и видео' },
+]
+
+export function hallSizes(theme: Theme): HallSizes {
+  return { board: 100, teams: 100, photos: 100, media: 100, ...theme.sizes }
+}
 
 // Готовые фирменные цвета для быстрого выбора
 export const ACCENT_PRESETS = ['#E53935', '#FB8C00', '#FDD835', '#43A047', '#00ACC1', '#1E88E5', '#8E24AA', '#D81B60']
@@ -55,7 +71,13 @@ export function hallThemeStyle(theme: Theme): CSSProperties {
   const paper = light ? '#FFFFFF' : '#000000' // текст на инверсной плашке
   const accent = theme.accentColor || ink // без фирменного цвета акцент — инверсия
   const font = FONTS.some((f) => f.family === theme.headingFont) ? theme.headingFont : FONTS[0].family
+  const sizes = hallSizes(theme)
   return {
+    // Размеры (множители): табло и команды увеличиваются целиком (CSS zoom), фото и картинки — по высоте
+    '--board-scale': sizes.board / 100,
+    '--teams-scale': sizes.teams / 100,
+    '--photos-scale': sizes.photos / 100,
+    '--media-scale': sizes.media / 100,
     '--color-bg': tone.bg,
     '--color-cell': tone.cell,
     '--color-line': tone.line,

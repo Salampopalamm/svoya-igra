@@ -35,7 +35,7 @@ export default function Scoreboard({
   const [editingId, setEditingId] = useState<string | null>(null) // у какой команды сейчас вписывают счёт
 
   return (
-    <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${Math.min(teams.length, 5)}, 1fr)` }}>
+    <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${Math.min(teams.length, 5)}, minmax(0, 1fr))` }}>
       {teams.map((team, i) => {
         const active = team.id === activeTeamId
         const out = outTeamIds.includes(team.id)

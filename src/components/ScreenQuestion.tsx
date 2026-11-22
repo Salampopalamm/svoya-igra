@@ -84,11 +84,17 @@ export default function ScreenQuestion({
           {timer && !showAnswer && <HallTimer timer={timer} />}
         </div>
       </div>
+      {/* Когда в ответе своя картинка, картинка вопроса уходит — на экране крупно только ответ.
+          Высоту картинок меняет ползунок «Картинки и видео» (--media-scale) */}
       <SlideView
-        slide={slide}
+        slide={showAnswer && answer?.media ? { text: slide.text } : slide}
         mode="hall"
-        textClass={slide.media ? 'text-4xl' : 'text-6xl'}
-        mediaClass={showAnswer ? 'max-h-[35vh] self-center' : 'max-h-[55vh] self-center'}
+        textClass={showAnswer || slide.media ? 'text-4xl' : 'text-6xl'}
+        mediaClass={
+          showAnswer
+            ? 'max-h-[calc(35vh*var(--media-scale,1))] self-center'
+            : 'max-h-[calc(55vh*var(--media-scale,1))] self-center'
+        }
       />
       {step && step.options.length > 0 && (
         <div className="grid gap-4" style={{ gridTemplateColumns: `repeat(${Math.min(step.options.length, 2)}, minmax(0, 1fr))` }}>
@@ -104,10 +110,12 @@ export default function ScreenQuestion({
         <div className="self-start rounded-xl border-[3px] border-accent bg-cell px-8 py-4 text-4xl font-semibold">{step.summary}</div>
       )}
       {showAnswer && answer && (answer.text || answer.media) && (
-        <div className="rounded-xl border-2 border-white p-8">
+        <div className="flex flex-col gap-4 rounded-xl border-2 border-white p-8">
           <div className="text-sm font-semibold tracking-widest text-muted">ОТВЕТ</div>
-          <div className="mt-2 text-5xl font-semibold">{answer.text}</div>
-          {answer.media && <MediaView media={answer.media} mode="hall" className="mt-4 max-h-[30vh]" />}
+          {answer.text && <div className="text-5xl font-semibold">{answer.text}</div>}
+          {answer.media && (
+            <MediaView media={answer.media} mode="hall" className="max-h-[calc(50vh*var(--media-scale,1))] self-center" />
+          )}
         </div>
       )}
     </div>

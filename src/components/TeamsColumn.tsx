@@ -44,7 +44,10 @@ export default function TeamsColumn({ teams, players, activeTeamId, activeLabel,
                   const firstName = p.name.split(/\s+/)[0]
                   return showPhotos ? (
                     <span key={p.id} className="flex flex-col items-center gap-1 text-sm">
-                      <PlayerAvatar player={p} size={avatar} />
+                      {/* Ползунок «Фото игроков» в оформлении игры увеличивает кружки */}
+                      <span className="[zoom:var(--photos-scale,1)]">
+                        <PlayerAvatar player={p} size={avatar} />
+                      </span>
                       {firstName}
                     </span>
                   ) : (

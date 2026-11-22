@@ -3,6 +3,7 @@ import { addMediaFile, deleteMediaIfUnused } from '../db'
 import { ACCENT_PRESETS, FONTS, TONES } from '../theme'
 import type { MediaRef, Theme } from '../types'
 import { useMediaUrl } from '../useMediaUrl'
+import SizeSliders from './SizeSliders'
 
 type Props = {
   theme: Theme
@@ -126,6 +127,14 @@ export default function ThemeEditor({ theme, onChange, onMediaRemoved }: Props) 
           Обесцветить картинки и видео вопросов
         </label>
       </Row>
+
+      <Row title="Размеры в зале">
+        <SizeSliders theme={theme} onChange={(sizes) => onChange({ sizes })} />
+      </Row>
+      <p className="-mt-3 text-sm text-muted">
+        Подгоните под проектор: крупнее табло, плашки команд, фото игроков или картинки вопросов. Во время игры то же
+        есть на пульте в ⚙ — зал меняется сразу.
+      </p>
     </section>
   )
 }

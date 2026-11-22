@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Board from '../components/Board'
+import SizeSliders from '../components/SizeSliders'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
@@ -758,6 +759,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             {game.theme.showPhotos ? 'Свернуть фото' : 'Показать фото'}
           </button>
         )
+      case 'sizes':
+        return <SizeSliders theme={game.theme} onChange={(sizes) => changeTheme({ sizes })} />
       case 'timer-sound':
         return (
           <button type="button" onClick={toggleSounds} aria-pressed={game.theme.sounds.enabled} className={toggleClass(game.theme.sounds.enabled)}>
