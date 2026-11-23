@@ -12,7 +12,8 @@ export type Row = {
   value: string // строкой: пока человек печатает, тут может быть что угодно
   question: string
   answer: string
-  media?: MediaRef
+  media?: MediaRef // файл вопроса (второй слайд)
+  more?: MediaRef[] // ещё картинки на том же слайде (если первая — картинка; всего до 8, как в редакторе)
 }
 
 export type Draft = {
@@ -149,7 +150,7 @@ export function templateCsv(): Blob {
 function slidesOf(r: Row): Content[] {
   const slides: Content[] = []
   if (r.question.trim()) slides.push({ text: r.question.trim() })
-  if (r.media) slides.push({ media: r.media })
+  if (r.media) slides.push(r.more?.length ? { media: r.media, more: r.more } : { media: r.media })
   return slides.length > 0 ? slides : [{}]
 }
 

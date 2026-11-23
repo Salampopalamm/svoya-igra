@@ -12,7 +12,7 @@ import { finalStateOf, remover } from '../final'
 import { formatPoints, stepById, type BranchState } from '../tree'
 import type { QuestionTree } from '../types'
 import { roundById } from '../game'
-import { CHANNEL, type HallAction, type HallStatus, type LiveState, type Message } from '../live'
+import { CHANNEL, hallMouseOn, type HallAction, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
@@ -166,7 +166,7 @@ export default function ScreenApp() {
           round={round}
           interactive={false}
           unlockedIds={live.unlockedIds ?? []}
-          onHallClick={live.hallMouse ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
+          onHallClick={hallMouseOn(live) ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
         />
       </div>
     )
@@ -195,7 +195,7 @@ export default function ScreenApp() {
           </VideoContext.Provider>
         </div>
       )}
-      {live.hallMouse && question && (
+      {hallMouseOn(live) && question && (
         <HallMousePanel
           question={question}
           slideIndex={slideIndex}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { addMediaFile, deleteMediaIfUnused, saveGame } from '../db'
 import { MAX_QUESTIONS, MAX_TEAMS } from '../game'
+import { canAddPicture, contentMedia, MAX_PICTURES } from '../pictures'
 import { plural } from '../plural'
 import ThemeEditor from '../components/ThemeEditor'
 import {
@@ -51,7 +52,7 @@ export default function WizardApp() {
 
   function startOver() {
     if (!window.confirm('Начать с чистого листа? Всё, что вы ввели в мастере, пропадёт.')) return
-    for (const r of draft.rows) if (r.media) void deleteMediaIfUnused(r.media.id)
+    for (const r of draft.rows) for (const m of contentMedia(r)) void deleteMediaIfUnused(m.id)
     for (const m of draftThemeMedia(draft)) void deleteMediaIfUnused(m.id)
     setDraft(newDraft())
     setStep(0)
@@ -261,28 +262,43 @@ function QuestionsStep({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
     })
   }
 
-  async function attach(row: Row, file: File | undefined) {
-    if (!file) return
+  // Файлы строки. Пустая строка: первый файл — любой (картинка, музыка, видео), остальные — картинки рядом с ним.
+  // У строки уже есть картинка: новые картинки встают рядом (до 8 на слайде, как в редакторе).
+  async function attach(row: Row, files: File[]) {
+    if (files.length === 0) return
     setError(null)
     try {
-      const media = await addMediaFile(file)
-      if (row.media) void deleteMediaIfUnused(row.media.id)
-      changeRow(row.id, { media })
+      let media = row.media
+      let rest = files
+      if (media) {
+        if (!canAddPicture(row)) return
+      } else {
+        media = await addMediaFile(files[0])
+        rest = files.slice(1)
+      }
+      const room = MAX_PICTURES - 1 - (row.more?.length ?? 0)
+      const pictures = media.type === 'image' || media.type === 'gif' ? rest.filter((f) => f.type.startsWith('image/')) : []
+      if (pictures.length < rest.length) setError('Рядом с картинкой можно ставить только картинки — остальные файлы пропущены.')
+      if (pictures.length > room) setError(`На одном слайде помещается до ${MAX_PICTURES} картинок — лишние пропущены.`)
+      const more = [...(row.more ?? [])]
+      for (const f of pictures.slice(0, Math.max(0, room))) more.push(await addMediaFile(f))
+      changeRow(row.id, { media, more: more.length > 0 ? more : undefined })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не получилось сохранить файл.')
     }
   }
 
+  // Убрать все файлы строки
   function detach(row: Row) {
-    if (!row.media) return
-    const id = row.media.id
-    changeRow(row.id, { media: undefined })
-    void deleteMediaIfUnused(id)
+    const files = contentMedia(row)
+    if (files.length === 0) return
+    changeRow(row.id, { media: undefined, more: undefined })
+    for (const m of files) void deleteMediaIfUnused(m.id)
   }
 
   function removeRow(row: Row) {
     setRows((rs) => rs.filter((r) => r.id !== row.id))
-    if (row.media) void deleteMediaIfUnused(row.media.id)
+    for (const m of contentMedia(row)) void deleteMediaIfUnused(m.id)
   }
 
   return (
@@ -386,33 +402,53 @@ function QuestionsStep({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
                 {row.media ? (
                   <span className="flex items-center gap-1">
                     <span
-                      title={row.media.name}
-                      className="flex h-9 min-w-14 items-center justify-center rounded-md bg-cell px-2 text-xs text-muted"
+                      title={contentMedia(row).map((m) => m.name).join(', ')}
+                      className="flex h-9 min-w-12 items-center justify-center rounded-md bg-cell px-2 text-xs whitespace-nowrap text-muted"
                     >
-                      {mediaKinds[row.media.type]}
+                      {row.more?.length ? `${row.more.length + 1} фото` : mediaKinds[row.media.type]}
                     </span>
+                    {canAddPicture(row) && (
+                      <label
+                        title="Добавить ещё картинки на тот же слайд"
+                        className="flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-md border border-dashed border-muted text-muted hover:border-white hover:text-white focus-within:border-white"
+                      >
+                        +
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          aria-label={`Добавить ещё картинки, строка ${i + 1}`}
+                          className="sr-only"
+                          onChange={(e) => {
+                            void attach(row, [...(e.target.files ?? [])])
+                            e.target.value = ''
+                          }}
+                        />
+                      </label>
+                    )}
                     <button
                       type="button"
                       onClick={() => detach(row)}
-                      aria-label={`Убрать файл «${row.media.name}», строка ${i + 1}`}
-                      className="h-11 w-11 rounded-lg text-muted hover:text-white"
+                      aria-label={`Убрать ${row.more?.length ? 'все файлы' : `файл «${row.media.name}»`}, строка ${i + 1}`}
+                      className="h-11 w-11 shrink-0 rounded-lg text-muted hover:text-white"
                     >
                       ×
                     </button>
                   </span>
                 ) : (
                   <label
-                    title="Картинка, музыка или видео: покажется вторым слайдом после текста вопроса"
+                    title="Картинка, музыка или видео: покажется вторым слайдом после текста вопроса. Можно выбрать сразу несколько картинок"
                     className="flex h-11 w-14 cursor-pointer items-center justify-center rounded-md border border-dashed border-muted text-muted hover:border-white hover:text-white focus-within:border-white"
                   >
                     +
                     <input
                       type="file"
                       accept="image/*,audio/*,video/*"
+                      multiple
                       aria-label={`Добавить медиа, строка ${i + 1}`}
                       className="sr-only"
                       onChange={(e) => {
-                        void attach(row, e.target.files?.[0])
+                        void attach(row, [...(e.target.files ?? [])])
                         e.target.value = ''
                       }}
                     />
@@ -449,7 +485,7 @@ function QuestionsStep({ draft, setDraft }: { draft: Draft; setDraft: (f: (d: Dr
   )
 }
 
-const columns = '180px 100px minmax(0, 1fr) 240px 120px 44px'
+const columns = '180px 100px minmax(0, 1fr) 240px 156px 44px'
 
 // ---- Шаг 3: команды ----
 

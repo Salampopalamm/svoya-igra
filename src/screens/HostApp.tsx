@@ -23,6 +23,7 @@ import {
   CHANNEL,
   clearRehearsal,
   clearState,
+  hallMouseOn,
   loadRehearsal,
   loadState,
   newTimer,
@@ -500,7 +501,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   function toggleHallMouse() {
-    setLive((s) => ({ ...s, hallMouse: !s.hallMouse }))
+    setLive((s) => ({ ...s, hallMouse: !hallMouseOn(s) }))
   }
 
   function toggleScreenHidden() {
@@ -572,7 +573,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Ведущий нажал мышью на экране зала (включено «Мышь в зале»): делаем то же, что кнопки пульта
   function handleHallAction(action: HallAction) {
-    if (!live.hallMouse || live.screenHidden) return
+    if (!hallMouseOn(live) || live.screenHidden) return
     const tree = currentCell.question?.tree
     switch (action.kind) {
       case 'open': {
@@ -764,11 +765,11 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           <button
             type="button"
             onClick={toggleHallMouse}
-            aria-pressed={!!live.hallMouse}
+            aria-pressed={hallMouseOn(live)}
             title="Выбирать вопросы и вести игру мышкой прямо на экране зала"
-            className={toggleClass(!!live.hallMouse)}
+            className={toggleClass(hallMouseOn(live))}
           >
-            Мышь в зале: {live.hallMouse ? 'вкл' : 'выкл'}
+            Мышь в зале: {hallMouseOn(live) ? 'вкл' : 'выкл'}
           </button>
         )
       case 'how-to':
