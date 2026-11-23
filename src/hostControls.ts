@@ -1,3 +1,4 @@
+import { APP_KEY } from './site'
 import { useState } from 'react'
 
 // Кнопки пульта. Все живут в настройках (⚙), разложенные по категориям;
@@ -52,7 +53,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
 // Без настроек на панели — самое нужное во время игры
 const DEFAULT_PINNED: ControlId[] = ['preview', 'hide-screen', 'undo', 'open-screen', 'how-to']
 
-const STORAGE_KEY = 'svoya-igra:host-pinned'
+const STORAGE_KEY = `${APP_KEY}:host-pinned`
 
 function load(): ControlId[] {
   try {

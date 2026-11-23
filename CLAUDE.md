@@ -20,7 +20,18 @@ React + TypeScript + Vite, Tailwind CSS 4 (`@tailwindcss/vite`), Dexie (IndexedD
 - `npm run dev` — сайт для разработки (http://localhost:5173)
 - `npm run build` — проверка типов и сборка; запускай перед каждым коммитом
 - `npm run lint` — oxlint
-- Сайт опубликован: https://salampopalamm.github.io/svoya-igra/ — собирается и выкладывается сам при каждой отправке в master (`.github/workflows/pages.yml`). Пути в сборке относительные (`base: './'` в `vite.config.ts`), поэтому адреса внутри сайта не начинай с `/`. Проверить сборку «как на GitHub» — запуск `pages-preview` в `.claude/launch.json` (http://localhost:4173/svoya-igra/).
+- `npm run build:dev` — сборка тестового сайта (режим `devsite`, папка `dist-dev`)
+
+## Ветки и сайты
+
+- **`dev`** — тесты. Вся новая работа сначала идёт сюда. Отправка в dev публикует тестовый сайт https://salampopalamm.github.io/svoya-igra/dev/ — с меткой «DEV» и своим хранилищем игр (`src/site.ts`: `IS_DEV_SITE`, `APP_KEY`), настоящие игры он не видит и не трогает. Игру между сайтами переносят файлом .zip.
+- **`main`** — основной проект, сайт для всех: https://salampopalamm.github.io/svoya-igra/. Сюда попадает только проверенное на dev — слиянием dev → main и только по слову владельца.
+- Любые имена в хранилище браузера (база, localStorage, канал связи окон) начинай с `APP_KEY`, иначе тестовый сайт смешается с основным.
+- Публикация — `.github/workflows/pages.yml`: при отправке в main или dev собираются обе ветки (main — в корень, dev — в папку `dev/`).
+
+## Сайт
+
+- Сайт собирается и выкладывается сам (см. «Ветки и сайты»). Пути в сборке относительные (`base: './'` в `vite.config.ts`), поэтому адреса внутри сайта не начинай с `/`. Проверить сборку «как на GitHub» — запуск `pages-preview` в `.claude/launch.json` (http://localhost:4173/svoya-igra/).
 
 ## Архитектура
 

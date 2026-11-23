@@ -1,3 +1,4 @@
+import { APP_KEY } from './site'
 import { demoGame } from './data/demoGame'
 import { MAX_QUESTIONS, MAX_TEAMS } from './game'
 import type { Category, Content, Game, MediaRef, Question, Theme } from './types'
@@ -192,7 +193,7 @@ export function gameFromDraft(draft: Draft): Game {
 
 // ---- Черновик в браузере: чтобы случайная перезагрузка не стёрла набранное ----
 
-const DRAFT_KEY = 'svoya-igra:wizard'
+const DRAFT_KEY = `${APP_KEY}:wizard`
 
 export function loadDraft(): Draft | null {
   try {

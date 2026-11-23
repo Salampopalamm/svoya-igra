@@ -1,3 +1,4 @@
+import { APP_KEY } from './site'
 import Dexie, { type EntityTable } from 'dexie'
 import { demoGame } from './data/demoGame'
 import { demoMediaFiles } from './data/demoMedia'
@@ -8,7 +9,7 @@ import type { Content, Game, MediaFile, MediaRef, MediaType, Question } from './
 //   media — сами файлы: картинки, музыка, видео.
 // Так замена картинки не трогает игру, а игра не раздувается от тяжёлых файлов.
 
-const db = new Dexie('svoya-igra') as Dexie & {
+const db = new Dexie(APP_KEY) as Dexie & {
   games: EntityTable<Game, 'id'>
   media: EntityTable<MediaFile, 'id'>
 }

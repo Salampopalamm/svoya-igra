@@ -1,10 +1,13 @@
-# Публикация сайта на GitHub Pages: при каждой отправке в master GitHub сам собирает сайт
-# (npm run build) и выкладывает папку dist по адресу https://salampopalamm.github.io/svoya-igra/
+# Публикация сайта на GitHub Pages. Две ветки — два сайта:
+#   main — основной сайт для всех: https://salampopalamm.github.io/svoya-igra/
+#   dev  — тестовый сайт:           https://salampopalamm.github.io/svoya-igra/dev/
+# GitHub выкладывает сайт целиком, поэтому при отправке в любую из веток собираются обе:
+# main — в корень, dev — в папку dev/. У тестового сайта своё хранилище игр (см. src/site.ts).
 name: Публикация сайта
 
 on:
   push:
-    branches: [master]
+    branches: [main, dev]
   workflow_dispatch: # кнопка «Run workflow» на GitHub — опубликовать вручную
 
 permissions:
@@ -21,16 +24,34 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Основной сайт — ветка main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main
       - uses: actions/setup-node@v5
         with:
           node-version: 26
           cache: npm
-      - run: npm ci
-      - run: npm run build
+          cache-dependency-path: main/package-lock.json
+      - run: npm ci && npm run build
+        working-directory: main
+
+      - name: Тестовый сайт — ветка dev (если она есть)
+        id: dev
+        run: git ls-remote --exit-code --heads "https://github.com/${{ github.repository }}.git" dev && echo "exists=true" >> "$GITHUB_OUTPUT" || echo "exists=false" >> "$GITHUB_OUTPUT"
+      - if: steps.dev.outputs.exists == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: dev
+          path: dev
+      - if: steps.dev.outputs.exists == 'true'
+        run: npm ci && npm run build:dev && mkdir -p ../main/dist/dev && cp -r dist-dev/. ../main/dist/dev/
+        working-directory: dev
+
       - uses: actions/upload-pages-artifact@v4
         with:
-          path: dist
+          path: main/dist
 
   deploy:
     needs: build

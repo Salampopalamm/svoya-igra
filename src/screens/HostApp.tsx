@@ -1,3 +1,4 @@
+import { APP_KEY } from '../site'
 import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
 import Board from '../components/Board'
 import SizeSliders from '../components/SizeSliders'
@@ -512,7 +513,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   function openScreen() {
-    window.open(`${window.location.pathname}#/screen`, 'svoya-igra-screen', 'popup,width=1280,height=720')
+    window.open(`${window.location.pathname}#/screen`, `${APP_KEY}-screen`, 'popup,width=1280,height=720')
   }
 
   // ---- Репетиция ----

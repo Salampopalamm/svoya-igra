@@ -1,3 +1,4 @@
+import { APP_KEY } from './site'
 import type { BranchState } from './tree'
 import type { Game, MediaRef } from './types'
 
@@ -105,10 +106,10 @@ export type HallAction =
   | { kind: 'close' } // закрыть вопрос, вернуться к табло
 
 // Канал связи между окнами одного браузера
-export const CHANNEL = 'svoya-igra'
+export const CHANNEL = APP_KEY
 
 // v2 — вопросы из слайдов; сохранения старого вида просто не читаем
-const STORAGE_KEY = 'svoya-igra:live:v2'
+const STORAGE_KEY = `${APP_KEY}:live:v2`
 
 // Сохранение на случай, если вкладку пульта случайно закрыли
 export function loadState(): Partial<LiveState> | null {
@@ -130,7 +131,7 @@ export function saveState(state: LiveState) {
 }
 
 // Репетиция: партия, какой она была до репетиции. Лежит отдельно — на случай перезагрузки пульта посреди репетиции.
-const REHEARSAL_KEY = 'svoya-igra:rehearsal'
+const REHEARSAL_KEY = `${APP_KEY}:rehearsal`
 
 export function saveRehearsal(state: LiveState) {
   try {
