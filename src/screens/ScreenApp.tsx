@@ -145,15 +145,11 @@ export default function ScreenApp() {
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
         <ScreenQuestion
-          categoryTitle={final ? `Финал · ${category.title}` : category.title}
-          hideValue={!!final}
+          title={final ? `Финал · ${category.title}` : undefined}
           question={question}
           slideIndex={slideIndex}
           showAnswer={showAnswer}
-          answeringTeam={final ? undefined : answeringTeam}
           step={step}
-          stealing={stealing}
-          canSteal={game.teams.some((t) => !triedTeamIds.includes(t.id))}
           timer={live.timer ?? null}
         />
       </VideoContext.Provider>
@@ -209,6 +205,13 @@ export default function ScreenApp() {
           onAction={act}
         />
       )}
+      {/* Во время вопроса шапки нет — всё место вопросу и картинкам; в репетиции метка остаётся в углу */}
+      {questionOpen && live.rehearsal && (
+        <span className="fixed top-3 left-3 z-20 rounded-lg border-2 border-dashed border-white px-3 py-1 text-sm font-semibold tracking-widest">
+          РЕПЕТИЦИЯ
+        </span>
+      )}
+      {!questionOpen && (
       <header className="flex items-center justify-between">
         <GameLogo
           theme={game.theme}
@@ -224,7 +227,7 @@ export default function ScreenApp() {
             </span>
           )}
         </span>
-        {!questionOpen && !final && turnTeam ? (
+        {!final && turnTeam ? (
           <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
             <TeamIcon team={turnTeam} size={28} />
             Ход: {turnTeam.name}
@@ -233,6 +236,7 @@ export default function ScreenApp() {
           <span className="text-sm text-muted">F11 — во весь экран</span>
         )}
       </header>
+      )}
 
       {photosView ? (
         // Колонка команд шире или уже вместе с ползунком «Команды и счёт», внутри всё увеличено так же

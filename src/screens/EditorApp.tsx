@@ -379,7 +379,6 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           theme={game.theme}
           gameTitle={game.title}
           roundTitle={round.title}
-          categoryTitle={category.title}
           question={question}
           onClose={() => setPreviewing(false)}
         />

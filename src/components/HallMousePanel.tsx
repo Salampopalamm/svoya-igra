@@ -1,3 +1,4 @@
+import { APP_KEY } from '../site'
 import { useEffect, useRef, useState } from 'react'
 import type { HallAction, TimerState } from '../live'
 import { useTimeLeft } from '../useTimeLeft'
@@ -34,6 +35,7 @@ export default function HallMousePanel({
   onAction,
 }: Props) {
   const visible = useMouseActive()
+  const [collapsed, setCollapsed] = useState(loadCollapsed)
   const left = useTimeLeft(timer)
   const timerRunning = timer ? timer.endsAt !== null && left > 0 : null
   const count = question.slides.length
@@ -42,10 +44,31 @@ export default function HallMousePanel({
   const button = 'h-14 min-w-14 rounded-xl border-2 border-line bg-bg px-4 text-lg font-semibold hover:border-white disabled:opacity-30'
   const primary = 'h-14 rounded-xl bg-accent px-5 text-lg font-semibold text-on-accent hover:opacity-90'
 
+  function toggle(next: boolean) {
+    setCollapsed(next)
+    saveCollapsed(next)
+  }
+
+  const fade = `transition-opacity duration-300 ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`
+
+  // Свёрнута: в углу только маленькая кнопка — панель не закрывает картинки
+  if (collapsed) {
+    return (
+      <div className={`fixed right-6 bottom-6 z-30 ${fade}`}>
+        <button
+          type="button"
+          onClick={() => toggle(false)}
+          aria-label="Развернуть панель ведущего"
+          className="h-14 rounded-xl border-2 border-line bg-cell/95 px-4 text-lg font-semibold shadow-2xl hover:border-white"
+        >
+          ▴ Панель
+        </button>
+      </div>
+    )
+  }
+
   return (
-    <div
-      className={`fixed inset-x-0 bottom-6 z-30 flex justify-center px-6 transition-opacity duration-300 ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
-    >
+    <div className={`fixed inset-x-0 bottom-6 z-30 flex justify-center px-6 ${fade}`}>
       <div className="flex max-w-full flex-wrap items-center justify-center gap-2 rounded-2xl border-2 border-line bg-cell/95 p-3 shadow-2xl">
         {count > 1 && (
           <>
@@ -106,9 +129,31 @@ export default function HallMousePanel({
             На табло
           </button>
         )}
+        <button type="button" onClick={() => toggle(true)} aria-label="Свернуть панель ведущего" title="Свернуть" className={button}>
+          ▾
+        </button>
       </div>
     </div>
   )
+}
+
+// Свёрнута ли панель — запоминаем в этом браузере, чтобы не сворачивать на каждом вопросе
+const COLLAPSED_KEY = `${APP_KEY}:hall-panel-collapsed`
+
+function loadCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function saveCollapsed(collapsed: boolean) {
+  try {
+    localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0')
+  } catch {
+    // хранилище недоступно — просто не запомним
+  }
 }
 
 // Двигали ли мышь за последние 3 секунды (пока курсор над панелью — она не прячется)

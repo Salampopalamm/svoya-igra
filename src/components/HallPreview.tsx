@@ -10,7 +10,6 @@ type Props = {
   theme: Theme
   gameTitle: string
   roundTitle: string
-  categoryTitle: string
   question: Question
   onClose: () => void
 }
@@ -18,7 +17,7 @@ type Props = {
 // Предпросмотр вопроса в редакторе: так его увидит зал — с оформлением игры, слайдами, ответом и таймером.
 // Живёт только в этом окне: в зал и в ход партии не попадает.
 // Клавиши как на пульте: ← / → — слайды, Пробел — ответ, T — таймер, Esc — закрыть.
-export default function HallPreview({ theme, gameTitle, roundTitle, categoryTitle, question, onClose }: Props) {
+export default function HallPreview({ theme, gameTitle, roundTitle, question, onClose }: Props) {
   const [slideIndex, setSlideIndex] = useState(0)
   const [showAnswer, setShowAnswer] = useState(false)
   const [timer, setTimer] = useState<TimerState | null>(() => newTimer(question.timerSec))
@@ -82,12 +81,9 @@ export default function HallPreview({ theme, gameTitle, roundTitle, categoryTitl
           </header>
           <div key={slideIndex} className="anim-appear flex min-h-0 flex-1 flex-col">
             <ScreenQuestion
-              categoryTitle={categoryTitle}
               question={question}
               slideIndex={slideIndex}
               showAnswer={showAnswer}
-              stealing={false}
-              canSteal={false}
               timer={timer}
               step={step}
             />
