@@ -47,6 +47,20 @@ export function hallSizes(theme: Theme): HallSizes {
   return { ...DEFAULT_SIZES, ...theme.sizes }
 }
 
+// Отдельный объект зала (ячейка, категория, команда): его CSS-переменная и множитель (нет переменной — 1)
+export function itemVar(key: string): string {
+  return `--i-${key.replace(/[^a-zA-Z0-9_-]/g, '_')}`
+}
+
+export function itemScale(key: string): string {
+  return `var(${itemVar(key)}, 1)`
+}
+
+// Ширина отдельного объекта в строке (табло, полоса команд): растянули — и доля ширины больше
+export function itemGrow(key: string, base = 1): CSSProperties {
+  return { flexGrow: `calc(${base} * ${itemScale(key)})`, flexShrink: 1, flexBasis: '0%', minWidth: 0 }
+}
+
 // Размер в допустимых пределах (растягивание мышью может дать что угодно)
 export function clampSize(value: number): number {
   return Math.min(SIZE_MAX, Math.max(SIZE_MIN, Math.round(value / SIZE_STEP) * SIZE_STEP))
@@ -90,6 +104,7 @@ export function hallThemeStyle(theme: Theme): CSSProperties {
     '--media-scale': sizes.media / 100,
     '--text-scale': sizes.text / 100,
     '--timer-scale': sizes.timer / 100,
+    ...Object.fromEntries(Object.entries(theme.itemSizes ?? {}).map(([key, value]) => [itemVar(key), value / 100])),
     '--color-bg': tone.bg,
     '--color-cell': tone.cell,
     '--color-line': tone.line,

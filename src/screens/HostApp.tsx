@@ -508,6 +508,14 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     void updateStoredGame(game.id, (g) => updateQuestion(g, questionId, change))
   }
 
+  // Размер отдельной ячейки, категории или команды; 100% — ключ убираем
+  function changeItemSize(key: string, value: number) {
+    const itemSizes = { ...game.theme.itemSizes }
+    if (value === 100) delete itemSizes[key]
+    else itemSizes[key] = value
+    changeTheme({ itemSizes })
+  }
+
   function toggleResizeHall() {
     setLive((s) => ({ ...s, resizeHall: !s.resizeHall }))
   }
@@ -586,9 +594,10 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Ведущий нажал мышью на экране зала (включено «Мышь в зале»): делаем то же, что кнопки пульта
   function handleHallAction(action: HallAction) {
     // «Растянуть в зале» — свой режим, работает и без «Мыши в зале»
-    if (action.kind === 'size' || action.kind === 'place' || action.kind === 'resize-done') {
+    if (action.kind === 'size' || action.kind === 'item-size' || action.kind === 'place' || action.kind === 'resize-done') {
       if (!live.resizeHall) return
       if (action.kind === 'size') changeTheme({ sizes: { ...hallSizes(game.theme), [action.id]: clampSize(action.value) } })
+      else if (action.kind === 'item-size') changeItemSize(action.key, clampSize(action.value))
       else if (action.kind === 'place') changeQuestionPlace(action.questionId, action.target, action.place)
       else toggleResizeHall()
       return
@@ -857,7 +866,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           </button>
         )
       case 'sizes':
-        return <SizeSliders theme={game.theme} onChange={(sizes) => changeTheme({ sizes })} />
+        return <SizeSliders theme={game.theme} onChange={changeTheme} />
       case 'timer-sound':
         return (
           <button type="button" onClick={toggleSounds} aria-pressed={game.theme.sounds.enabled} className={toggleClass(game.theme.sounds.enabled)}>

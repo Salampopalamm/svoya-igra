@@ -111,7 +111,8 @@ export type HallAction =
   | { kind: 'wrong' } // «Неверно» отвечающей команде
   | { kind: 'close' } // закрыть вопрос, вернуться к табло
   // Режим «Растянуть в зале» (работает и без «Мыши в зале»):
-  | { kind: 'size'; id: keyof HallSizes; value: number } // ведущий растянул объект — новый размер, %
+  | { kind: 'size'; id: keyof HallSizes; value: number } // ведущий растянул текст, картинки или таймер — новый размер, %
+  | { kind: 'item-size'; key: string; value: number } // растянул отдельную ячейку, категорию, команду или шапку
   | { kind: 'place'; questionId: string; target: PlaceTarget; place: Placement } // передвинул объект слайда со своей расстановкой
   | { kind: 'resize-done' } // «Готово» — выключить режим
 

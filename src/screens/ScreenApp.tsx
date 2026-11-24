@@ -24,6 +24,7 @@ export default function ScreenApp() {
   const [live, setLive] = useState<LiveState | null>(null)
   // Браузер разрешает звук только после клика по окну — поэтому сначала заставка «Нажмите, чтобы начать»
   const [started, setStarted] = useState(false)
+  const [barDown, setBarDown] = useState(false) // плашку «Растянуть» можно опустить вниз, чтобы не закрывала шапку
   const channelRef = useRef<BroadcastChannel | null>(null)
   const startedRef = useRef(started)
   // Файлы игры загружаем заранее, ещё на заставке; сколько готово — сообщаем пульту
@@ -170,17 +171,16 @@ export default function ScreenApp() {
     ) : final ? (
       <FinalScreen game={game} round={round} final={final} />
     ) : (
-      // Размер табло — ползунок «Табло» (CSS zoom увеличивает ячейки и надписи целиком)
-      <Resizable id="board">
-        <div className="[zoom:var(--board-scale,1)]">
-          <Board
-            round={round}
-            interactive={false}
-            unlockedIds={live.unlockedIds ?? []}
-            onHallClick={hallMouseOn(live) && !resizing ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
-          />
-        </div>
-      </Resizable>
+      // Размер табло — ползунок «Табло» (CSS zoom увеличивает ячейки и надписи целиком);
+      // в режиме «Растянуть» у каждой ячейки и категории свой уголок
+      <div className="[zoom:var(--board-scale,1)]">
+        <Board
+          round={round}
+          interactive={false}
+          unlockedIds={live.unlockedIds ?? []}
+          onHallClick={hallMouseOn(live) && !resizing ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
+        />
+      </div>
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
@@ -196,7 +196,14 @@ export default function ScreenApp() {
   const photosView = game.theme.teamView === 'photos'
 
   return (
-    <ResizeContext.Provider value={resizing ? (id, value) => act({ kind: 'size', id, value }) : null}>
+    <ResizeContext.Provider
+      value={
+        resizing
+          ? (target, value) =>
+              act('id' in target ? { kind: 'size', id: target.id, value } : { kind: 'item-size', key: target.item, value })
+          : null
+      }
+    >
       <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
         {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
         {live.shownMedia && (
@@ -209,7 +216,7 @@ export default function ScreenApp() {
           </div>
         )}
         {resizing && (
-          <div className="fixed inset-x-0 top-3 z-40 flex justify-center px-6">
+          <div className={`fixed inset-x-0 z-40 flex justify-center px-6 ${barDown ? 'bottom-3' : 'top-3'}`}>
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-line bg-cell/95 p-2 pl-5 text-lg shadow-2xl">
               <span>Тяните уголки ◢ — размер{placedNow ? ', объекты слайда — место' : ''}</span>
               <button
@@ -218,6 +225,15 @@ export default function ScreenApp() {
                 className="h-12 rounded-xl bg-accent px-6 font-semibold text-on-accent hover:opacity-90"
               >
                 Готово
+              </button>
+              <button
+                type="button"
+                onClick={() => setBarDown(!barDown)}
+                aria-label={barDown ? 'Поднять плашку наверх' : 'Опустить плашку вниз'}
+                title={barDown ? 'Поднять плашку наверх' : 'Опустить плашку вниз'}
+                className="h-12 w-12 rounded-xl border-2 border-line hover:border-white"
+              >
+                {barDown ? '▴' : '▾'}
               </button>
             </div>
           </div>
@@ -243,62 +259,64 @@ export default function ScreenApp() {
           </span>
         )}
         {!questionOpen && (
-        <header className="flex items-center justify-between">
-          <GameLogo
-            theme={game.theme}
-            className="h-14 max-w-60"
-            fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
-          />
-          <span className="flex items-center gap-4">
-            <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
-            {/* Репетиция: в зале видно, что это не настоящая игра */}
-            {live.rehearsal && (
-              <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
-                РЕПЕТИЦИЯ
-              </span>
-            )}
-          </span>
-          {!final && turnTeam ? (
-            <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
-              <TeamIcon team={turnTeam} size={28} />
-              Ход: {turnTeam.name}
+          <header className="flex items-center justify-between">
+            <Resizable item="head:title" label="Название игры">
+              <GameLogo
+                theme={game.theme}
+                className="h-14 max-w-60"
+                fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
+              />
+            </Resizable>
+            <span className="flex items-center gap-4">
+              <Resizable item="head:round" label="Раунд">
+                <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+              </Resizable>
+              {/* Репетиция: в зале видно, что это не настоящая игра */}
+              {live.rehearsal && (
+                <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
+                  РЕПЕТИЦИЯ
+                </span>
+              )}
             </span>
-          ) : (
-            <span className="text-sm text-muted">F11 — во весь экран</span>
-          )}
-        </header>
+            {!final && turnTeam ? (
+              <Resizable item="head:turn" label="Чей ход">
+                <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
+                  <TeamIcon team={turnTeam} size={28} />
+                  Ход: {turnTeam.name}
+                </span>
+              </Resizable>
+            ) : (
+              <span className="text-sm text-muted">F11 — во весь экран</span>
+            )}
+          </header>
         )}
 
         {photosView ? (
           // Колонка команд шире или уже вместе с ползунком «Команды и счёт», внутри всё увеличено так же
           <div className="grid flex-1 gap-8" style={{ gridTemplateColumns: 'minmax(0, 1fr) calc(380px * var(--teams-scale, 1))' }}>
             <div className="flex flex-col">{main}</div>
-            <Resizable id="teams">
-              <div className="[zoom:var(--teams-scale,1)]">
-                <TeamsColumn
-                  teams={game.teams}
-                  players={game.players}
-                  activeTeamId={activeTeamId}
-                  activeLabel={activeLabel}
-                  outTeamIds={outTeamIds}
-                  showPhotos={game.theme.showPhotos}
-                />
-              </div>
-            </Resizable>
+            <div className="[zoom:var(--teams-scale,1)]">
+              <TeamsColumn
+                teams={game.teams}
+                players={game.players}
+                activeTeamId={activeTeamId}
+                activeLabel={activeLabel}
+                outTeamIds={outTeamIds}
+                showPhotos={game.theme.showPhotos}
+              />
+            </div>
           </div>
         ) : (
           <>
             {main}
-            <Resizable id="teams">
-              <div className="[zoom:var(--teams-scale,1)]">
-                <Scoreboard
-                  teams={game.teams}
-                  activeTeamId={activeTeamId}
-                  activeLabel={activeLabel}
-                  outTeamIds={outTeamIds}
-                />
-              </div>
-            </Resizable>
+            <div className="[zoom:var(--teams-scale,1)]">
+              <Scoreboard
+                teams={game.teams}
+                activeTeamId={activeTeamId}
+                activeLabel={activeLabel}
+                outTeamIds={outTeamIds}
+              />
+            </div>
           </>
         )}
       </HallFrame>

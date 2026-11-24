@@ -129,7 +129,7 @@ export default function ThemeEditor({ theme, onChange, onMediaRemoved }: Props) 
       </Row>
 
       <Row title="Размеры в зале">
-        <SizeSliders theme={theme} onChange={(sizes) => onChange({ sizes })} />
+        <SizeSliders theme={theme} onChange={onChange} />
       </Row>
       <p className="-mt-3 text-sm text-muted">
         Подгоните под проектор: крупнее табло, плашки команд, фото игроков или картинки вопросов. Во время игры то же
