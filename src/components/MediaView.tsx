@@ -19,7 +19,8 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
   }
 
   if (media.type === 'image' || media.type === 'gif') {
-    return <img data-media src={file.url} alt={media.name} className={`rounded-lg object-contain ${className}`} />
+    // draggable={false}: картинку нельзя схватить мышью — иначе браузер тащит её как файл, и редактор добавил бы копию
+    return <img data-media draggable={false} src={file.url} alt={media.name} className={`rounded-lg object-contain ${className}`} />
   }
 
   if (media.type === 'audio') {

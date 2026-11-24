@@ -4,6 +4,15 @@ import { canAddPicture, columnsOf, contentMedia, layoutName, layoutOf, layoutsFo
 import type { Content, MediaRef, PictureLayout } from '../types'
 import { ContentMedia, MediaView } from './MediaView'
 
+// Тянут что-то с этой же страницы (картинку, текст) — это не новый файл, такое отпускание не принимаем.
+// Файл из папки или с рабочего стола события dragstart на странице не вызывает.
+let draggingFromPage = false
+if (typeof document !== 'undefined') {
+  document.addEventListener('dragstart', () => (draggingFromPage = true))
+  document.addEventListener('dragend', () => (draggingFromPage = false))
+  document.addEventListener('drop', () => setTimeout(() => (draggingFromPage = false)))
+}
+
 // Маленькая схема шаблона на кнопке: квадратики, как встанут картинки
 function LayoutIcon({ layout, count }: { layout: PictureLayout; count: number }) {
   const box = 'rounded-[2px] bg-current opacity-70'
@@ -147,6 +156,7 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
   return (
     <div
       onDragOver={(e) => {
+        if (draggingFromPage) return // не подсвечиваем и не принимаем то, что тянут с этой же страницы
         e.preventDefault()
         setDragOver(true)
       }}
@@ -154,6 +164,7 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
       onDrop={(e) => {
         e.preventDefault()
         setDragOver(false)
+        if (draggingFromPage) return // картинку слайда просто подвинули мышью — копию не добавляем
         drop([...e.dataTransfer.files])
       }}
       className={`flex flex-col gap-3 rounded-lg ${dragOver ? 'outline-2 outline-offset-4 outline-white outline-dashed' : ''}`}
