@@ -144,7 +144,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Если вкладку закрывали посреди этой же игры — продолжаем с того же места.
   // Вопросы берём свежие из хранилища (их могли поправить в редакторе), счёт и сыгранные ячейки — из партии.
   const [live, setLive] = useState<LiveState>(() => {
-    const saved = loadState()
+    const saved = loadState(initialGame.id)
     if (saved?.game?.id !== initialGame.id) return freshState(initialGame)
     const game = mergeProgress(initialGame, saved.game)
     // Команды могли удалить на экране «Команды» — тогда снимаем выбор, а ход отдаём первой
@@ -157,7 +157,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       turnTeamId: exists(saved.turnTeamId) ? saved.turnTeamId : (game.teams[0]?.id ?? null),
       triedTeamIds: (saved.triedTeamIds ?? []).filter(exists),
       video: null, // видео после перезагрузки не продолжаем само — ведущий запустит снова
-      rehearsal: !!saved.rehearsal && loadRehearsal()?.game?.id === initialGame.id, // без запомненной партии репетиция не продолжится
+      rehearsal: !!saved.rehearsal && !!loadRehearsal(initialGame.id), // без запомненной партии репетиция не продолжится
     }
   })
   const [history, setHistory] = useState<LiveState[]>([]) // для Ctrl+Z, только на пульте
@@ -170,6 +170,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [settingsOpen, setSettingsOpen] = useState(false) // открыта панель настроек (⚙)
   const [howToOpen, setHowToOpen] = useState(false) // открыта памятка «Как провести игру»
   const { pinned, toggle: togglePin } = usePinnedControls() // кнопки на панели ведущего
+  const [otherHosts, setOtherHosts] = useState<string[]>([]) // пульт открыт ещё в других окнах — зал слушает все сразу
 
   const channelRef = useRef<BroadcastChannel | null>(null)
   const liveRef = useRef(live)
@@ -194,8 +195,24 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       if (e.data.type === 'hall') setHallStatus(e.data.status)
       if (e.data.type === 'hall-media') setHallMedia({ done: e.data.done, total: e.data.total })
       if (e.data.type === 'hall-action') hallActionRef.current(e.data.action)
+      // Второй пульт: отзываемся, чтобы и он знал о нас, и показываем предупреждение
+      if (e.data.type === 'host' && e.data.instance !== instance) {
+        const other = e.data.instance
+        setOtherHosts((list) => (list.includes(other) ? list : [...list, other]))
+        if (!e.data.reply) channel.postMessage({ type: 'host', instance, reply: true } satisfies Message)
+      }
+      if (e.data.type === 'host-bye') {
+        const other = e.data.instance
+        setOtherHosts((list) => list.filter((id) => id !== other))
+      }
     }
+    const instance = crypto.randomUUID() // этот пульт
+    channel.postMessage({ type: 'host', instance } satisfies Message) // «есть кто ещё?»
+    const bye = () => channel.postMessage({ type: 'host-bye', instance } satisfies Message)
+    window.addEventListener('pagehide', bye)
     return () => {
+      window.removeEventListener('pagehide', bye)
+      bye()
       channel.close()
       channelRef.current = null
     }
@@ -552,8 +569,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   function endRehearsal() {
-    const before = loadRehearsal()
-    clearRehearsal()
+    const before = loadRehearsal(game.id)
+    clearRehearsal(game.id)
     setLive(before && before.game.id === game.id ? { ...before, rehearsal: false, video: null } : { ...withClosed(live), rehearsal: false })
     setHistory(historyBeforeRehearsal.current)
     historyBeforeRehearsal.current = []
@@ -583,9 +600,9 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   function resetGame() {
-    clearRehearsal()
+    clearRehearsal(game.id)
     historyBeforeRehearsal.current = []
-    clearState()
+    clearState(game.id)
     setLive(freshState({ ...initialGame, theme: game.theme })) // вид команд, выбранный в игре, оставляем
     setHistory([])
     setPreview(null)
@@ -878,6 +895,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-bg px-10 py-8 text-white">
+      {otherHosts.length > 0 && (
+        <p role="alert" className="rounded-lg border-2 border-white px-4 py-3 font-semibold">
+          ⚠ Пульт открыт ещё в одном окне или вкладке. Экран зала слушает оба — картинка будет мигать, а нажатия мышью в
+          зале сработают дважды. Закройте лишний пульт.
+        </p>
+      )}
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex flex-wrap items-center gap-4">
           <a href="#/" className="text-sm text-muted hover:text-white">

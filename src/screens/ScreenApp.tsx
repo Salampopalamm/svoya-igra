@@ -7,6 +7,7 @@ import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
 import HallMousePanel from '../components/HallMousePanel'
+import ErrorBoundary from '../components/ErrorBoundary'
 import { Resizable } from '../components/Resizable'
 import { ResizeContext } from '../hallResize'
 import { MediaView } from '../components/MediaView'
@@ -19,11 +20,14 @@ import { usePreload } from '../preload'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
+// По залу уже щёлкнули (звук разрешён). Помним и после сбоя: зал перезапускается без заставки.
+let startedBefore = false
+
 // Экран зала: только показывает то, что прислал пульт. Ответ виден, лишь когда ведущий его открыл.
 export default function ScreenApp() {
   const [live, setLive] = useState<LiveState | null>(null)
   // Браузер разрешает звук только после клика по окну — поэтому сначала заставка «Нажмите, чтобы начать»
-  const [started, setStarted] = useState(false)
+  const [started, setStarted] = useState(startedBefore)
   const [barDown, setBarDown] = useState(false) // плашку «Растянуть» можно опустить вниз, чтобы не закрывала шапку
   const channelRef = useRef<BroadcastChannel | null>(null)
   const startedRef = useRef(started)
@@ -60,6 +64,7 @@ export default function ScreenApp() {
   function start() {
     setStarted(true)
     startedRef.current = true
+    startedBefore = true
     channelRef.current?.postMessage({ type: 'hall', status: 'ready' } satisfies Message)
     // Во весь экран (на проекторе это и нужно). Не получилось — не страшно, есть F11.
     document.documentElement.requestFullscreen?.().catch(() => undefined)
@@ -69,6 +74,7 @@ export default function ScreenApp() {
   function soundBlocked() {
     setStarted(false)
     startedRef.current = false
+    startedBefore = false
     channelRef.current?.postMessage({ type: 'hall', status: 'waiting-click' } satisfies Message)
   }
 
@@ -188,7 +194,10 @@ export default function ScreenApp() {
       key={question ? `${question.id}-${live.branch?.nodeId ?? ''}` : final ? `final-${final.phase}` : `board-${round.id}`}
       className="anim-appear flex min-h-0 flex-1 flex-col"
     >
-      {content}
+      {/* Сломался вопрос или табло — зрители видят пустое место, а не ошибку; следующее действие пульта пробует снова */}
+      <ErrorBoundary resetKey={live} fallback={() => null}>
+        {content}
+      </ErrorBoundary>
     </div>
   )
 

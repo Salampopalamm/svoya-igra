@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { deleteGame, deleteMediaIfUnused, listGames, saveGame } from '../db'
+import { deleteGame, deleteMediaIfUnused, listGames, protectStorage, saveGame, storageUsed } from '../db'
 import { allMediaIds, copyGame } from '../game'
-import { exportFileName, exportGame, importGame } from '../gameFile'
+import { exportedAt, exportFileName, exportGame, importGame, markExported } from '../gameFile'
+import { clearRehearsal, clearState, hasSavedState } from '../live'
 import type { Game } from '../types'
 
 // Стартовый экран «Мои игры»: создать игру, открыть файл, список своих игр.
@@ -9,14 +10,27 @@ export default function LibraryApp() {
   const [games, setGames] = useState<Game[] | null>(null)
 
   function reload() {
-    listGames().then(setGames)
+    listGames().then(setGames) // испорченные игры listGames чинит сам
   }
 
   useEffect(reload, [])
 
+  // Сохранность: просим браузер не стирать игры и показываем, сколько места они занимают
+  const [safe, setSafe] = useState<boolean | null>(null)
+  const [used, setUsed] = useState<number | null>(null)
+  useEffect(() => {
+    void protectStorage().then(setSafe)
+  }, [])
+  useEffect(() => {
+    void storageUsed().then(setUsed)
+  }, [games])
+  const [exported, setExported] = useState(exportedAt) // когда какую игру сохраняли файлом
+
   async function remove(game: Game) {
     if (!window.confirm(`Удалить игру «${game.title}»? Это нельзя отменить.`)) return
     await deleteGame(game.id)
+    clearState(game.id) // и сохранённую партию этой игры
+    clearRehearsal(game.id)
     // Файлы этой игры больше не нужны, если их не использует другая игра (например, её копия)
     for (const id of allMediaIds(game)) await deleteMediaIfUnused(id)
     reload()
@@ -57,6 +71,8 @@ export default function LibraryApp() {
       link.href = url
       link.download = exportFileName(game)
       link.click()
+      markExported(game.id)
+      setExported(exportedAt())
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch {
       setMessage({ text: 'Не получилось собрать файл игры.', error: true })
@@ -122,6 +138,14 @@ export default function LibraryApp() {
             0,
           )
           const date = game.updatedAt ? new Date(game.updatedAt).toLocaleDateString('ru-RU') : ''
+          const copyAt = exported[game.id]
+          // Есть ли свежая копия файлом: после неё игру не меняли
+          const copy = !copyAt
+            ? 'копии файлом нет'
+            : copyAt >= (game.updatedAt ?? 0)
+              ? `копия файлом ${new Date(copyAt).toLocaleDateString('ru-RU')} ✓`
+              : `копия файлом ${new Date(copyAt).toLocaleDateString('ru-RU')}, после неё игру меняли`
+          const freshCopy = !!copyAt && copyAt >= (game.updatedAt ?? 0)
 
           return (
             <div
@@ -132,6 +156,10 @@ export default function LibraryApp() {
                 <div className="text-lg font-semibold">{game.title}</div>
                 <div className="text-sm text-muted">
                   {categories} категорий · {questions} вопросов{date ? ` · изменена ${date}` : ''}
+                </div>
+                <div className="text-sm text-muted">
+                  {hasSavedState(game.id) && <span className="font-semibold text-white">▶ партия идёт, счёт сохранён · </span>}
+                  <span className={freshCopy ? '' : 'text-white'}>{copy}</span>
                 </div>
               </div>
               <a
@@ -179,10 +207,21 @@ export default function LibraryApp() {
         })}
 
         <p className="text-sm text-muted">
+          {used !== null && `Игры и файлы занимают ${formatSize(used)}. `}
+          {safe === true && 'Браузер обещал не стирать их сам. '}
+          {safe === false && 'Браузер может стереть их сам, если на диске мало места, — перед важной игрой сохраните копию файлом. '}
           Игры хранятся в этом браузере. Чтобы перенести игру на другой ноутбук, нажмите «Отправить файлом» и откройте
           этот файл там.
         </p>
       </section>
     </div>
   )
+}
+
+// 123 456 789 байт → «118 МБ»
+function formatSize(bytes: number) {
+  const mb = bytes / 1024 / 1024
+  if (mb < 1) return 'меньше 1 МБ'
+  if (mb < 1024) return `${Math.round(mb)} МБ`
+  return `${(mb / 1024).toFixed(1).replace('.', ',')} ГБ`
 }

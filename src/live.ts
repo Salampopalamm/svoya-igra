@@ -93,6 +93,8 @@ export type Message =
   | { type: 'hall'; status: HallStatus } // зал → пульт: ждёт клика / готов (звук разрешён) / закрыт
   | { type: 'hall-media'; done: number; total: number } // зал → пульт: сколько файлов игры уже загружено
   | { type: 'hall-action'; action: HallAction } // зал → пульт: ведущий нажал мышью на экране зала
+  | { type: 'host'; instance: string; reply?: boolean } // пульт → пультам: «я открыт» (два пульта сразу — предупреждение)
+  | { type: 'host-bye'; instance: string } // пульт закрылся
 
 // Включена ли «Мышь в зале» (по умолчанию — да: мышь в руке у ведущего, а не у зрителей)
 export function hallMouseOn(s: Pick<LiveState, 'hallMouse'>): boolean {
@@ -119,60 +121,110 @@ export type HallAction =
 // Канал связи между окнами одного браузера
 export const CHANNEL = APP_KEY
 
-// v2 — вопросы из слайдов; сохранения старого вида просто не читаем
-const STORAGE_KEY = `${APP_KEY}:live:v2`
+// Ход партии хранится отдельно для каждой игры: открыли на пульте другую игру — счёт первой не пропадает.
+// v3 — партия у каждой игры своя (в v2 была одна на весь браузер)
+const STATE_PREFIX = `${APP_KEY}:live:v3:`
+const OLD_STATE_KEY = `${APP_KEY}:live:v2`
+const REHEARSAL_PREFIX = `${APP_KEY}:rehearsal:v2:`
+const OLD_REHEARSAL_KEY = `${APP_KEY}:rehearsal`
 
-// Сохранение на случай, если вкладку пульта случайно закрыли
-export function loadState(): Partial<LiveState> | null {
+function readJson<T>(key: string): T | null {
   try {
-    localStorage.removeItem('svoya-igra:live') // сохранение старого вида больше не нужно
-    const raw = localStorage.getItem(STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as Partial<LiveState>) : null
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
   } catch {
     return null
   }
+}
+
+// Записать; если место в хранилище кончилось — убрать сохранённые партии других игр и попробовать ещё раз
+function writeJson(key: string, value: unknown) {
+  const gameId = key.slice(key.lastIndexOf(':') + 1) // партии этой же игры (и её репетицию) не трогаем
+  const text = JSON.stringify(value)
+  try {
+    localStorage.setItem(key, text)
+  } catch {
+    try {
+      for (const other of Object.keys(localStorage)) {
+        const partOfOther = other.startsWith(STATE_PREFIX) || other.startsWith(REHEARSAL_PREFIX)
+        if (partOfOther && !other.endsWith(':' + gameId)) localStorage.removeItem(other)
+      }
+      localStorage.setItem(key, text)
+    } catch {
+      // хранилище недоступно — игра продолжится без сохранения
+    }
+  }
+}
+
+function remove(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // ничего страшного
+  }
+}
+
+// Старое сохранение (одно на весь браузер) переезжает к своей игре
+function moveOld(oldKey: string, prefix: string) {
+  const old = readJson<Partial<LiveState>>(oldKey)
+  if (old?.game?.id && !readJson(prefix + old.game.id)) writeJson(prefix + old.game.id, old)
+  remove(oldKey)
+}
+
+// Сохранённая партия этой игры (на случай, если вкладку пульта случайно закрыли)
+export function loadState(gameId: string): Partial<LiveState> | null {
+  remove('svoya-igra:live') // сохранение самого старого вида больше не нужно
+  moveOld(OLD_STATE_KEY, STATE_PREFIX)
+  const saved = readJson<Partial<LiveState>>(STATE_PREFIX + gameId)
+  return saved?.game?.id === gameId ? saved : null
 }
 
 export function saveState(state: LiveState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    // хранилище недоступно — игра продолжится без сохранения
-  }
+  writeJson(STATE_PREFIX + state.game.id, state)
+}
+
+export function clearState(gameId: string) {
+  remove(STATE_PREFIX + gameId)
+}
+
+// Начата ли у игры партия (для пометки в «Моих играх»)
+export function hasSavedState(gameId: string): boolean {
+  moveOld(OLD_STATE_KEY, STATE_PREFIX)
+  const saved = readJson<Partial<LiveState>>(STATE_PREFIX + gameId)
+  return !!saved?.game?.teams?.some((t) => t.score !== 0) || !!saved?.game?.rounds?.some((r) => r.categories.some((c) => c.questions.some((q) => q.played)))
 }
 
 // Репетиция: партия, какой она была до репетиции. Лежит отдельно — на случай перезагрузки пульта посреди репетиции.
-const REHEARSAL_KEY = `${APP_KEY}:rehearsal`
-
 export function saveRehearsal(state: LiveState) {
-  try {
-    localStorage.setItem(REHEARSAL_KEY, JSON.stringify(state))
-  } catch {
-    // хранилище недоступно — партию до репетиции помним только в памяти пульта
-  }
+  writeJson(REHEARSAL_PREFIX + state.game.id, state)
 }
 
-export function loadRehearsal(): LiveState | null {
-  try {
-    const raw = localStorage.getItem(REHEARSAL_KEY)
-    return raw ? (JSON.parse(raw) as LiveState) : null
-  } catch {
-    return null
-  }
+export function loadRehearsal(gameId: string): LiveState | null {
+  moveOld(OLD_REHEARSAL_KEY, REHEARSAL_PREFIX)
+  const saved = readJson<LiveState>(REHEARSAL_PREFIX + gameId)
+  return saved?.game?.id === gameId ? saved : null
 }
 
-export function clearRehearsal() {
-  try {
-    localStorage.removeItem(REHEARSAL_KEY)
-  } catch {
-    // ничего страшного
-  }
+export function clearRehearsal(gameId: string) {
+  remove(REHEARSAL_PREFIX + gameId)
 }
 
-export function clearState() {
-  try {
-    localStorage.removeItem(STORAGE_KEY)
-  } catch {
-    // ничего страшного
-  }
+// Пульт сломался на открытом вопросе: закрыть его в сохранённой партии (счёт и сыгранные ячейки остаются)
+export function closeSavedQuestion(gameId: string) {
+  const saved = readJson<Partial<LiveState>>(STATE_PREFIX + gameId)
+  if (!saved) return
+  writeJson(STATE_PREFIX + gameId, {
+    ...saved,
+    current: null,
+    slideIndex: 0,
+    showAnswer: false,
+    answeringTeamId: null,
+    triedTeamIds: [],
+    viewOnly: false,
+    timer: null,
+    video: null,
+    branch: null,
+    shownMedia: null,
+    resizeHall: false,
+  } satisfies Partial<LiveState>)
 }

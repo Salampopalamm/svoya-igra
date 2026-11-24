@@ -2,6 +2,7 @@ import { APP_KEY } from './site'
 import Dexie, { type EntityTable } from 'dexie'
 import { demoGame } from './data/demoGame'
 import { demoMediaFiles } from './data/demoMedia'
+import { repairGame } from './repairGame'
 import type { Content, Game, MediaFile, MediaRef, MediaType, Question } from './types'
 
 // Хранилище в браузере (IndexedDB через библиотеку Dexie):
@@ -61,26 +62,60 @@ export async function listGames(): Promise<Game[]> {
     await db.media.bulkPut(demoMediaFiles())
     await db.games.put({ ...demoGame, updatedAt: Date.now() })
   }
-  return db.games.orderBy('updatedAt').reverse().toArray()
+  const games = await db.games.orderBy('updatedAt').reverse().toArray()
+  return games.map(repairGame).filter((g): g is Game => !!g)
 }
 
-export function getGame(id: string) {
-  return db.games.get(id)
+// Игру из хранилища всегда чиним (repairGame.ts): испорченное поле не уронит пульт или редактор
+export async function getGame(id: string): Promise<Game | undefined> {
+  const game = await db.games.get(id)
+  return (game && repairGame(game)) || undefined
 }
 
-export function saveGame(game: Game) {
-  return db.games.put({ ...game, updatedAt: Date.now() })
+export async function saveGame(game: Game) {
+  const id = await db.games.put({ ...game, updatedAt: Date.now() })
+  tellOtherWindows(game.id)
+  return id
 }
 
 // Поменять в сохранённой игре только часть (например, оформление), не трогая остальное.
 // Пульт так запоминает вид команд, не записывая в хранилище счёт текущей партии.
 export async function updateStoredGame(id: string, change: (g: Game) => Game) {
   const game = await db.games.get(id)
-  if (game) await db.games.put(change(game))
+  if (!game) return
+  await db.games.put(change(repairGame(game) ?? game))
+  tellOtherWindows(id)
 }
 
 export function deleteGame(id: string) {
   return db.games.delete(id)
+}
+
+// ---- Другие окна ----
+// Игру могут менять сразу два окна (редактор и пульт, две вкладки редактора). Сохранили — сообщаем остальным,
+// чтобы они взяли свежую игру и при следующей правке не вернули старое.
+
+const WINDOW_ID = crypto.randomUUID() // это окно: свои же сообщения не слушаем
+const GAMES_CHANNEL = `${APP_KEY}:games`
+type GameSaved = { gameId: string; from: string }
+let sender: BroadcastChannel | null = null
+
+function tellOtherWindows(gameId: string) {
+  try {
+    sender ??= new BroadcastChannel(GAMES_CHANNEL)
+    sender.postMessage({ gameId, from: WINDOW_ID } satisfies GameSaved)
+  } catch {
+    // старый браузер без BroadcastChannel — просто не сообщим
+  }
+}
+
+// Слушать: игру сохранило другое окно. Возвращает «перестать слушать».
+export function onGameSavedElsewhere(listener: (gameId: string) => void): () => void {
+  const channel = new BroadcastChannel(GAMES_CHANNEL)
+  channel.onmessage = (e: MessageEvent<GameSaved>) => {
+    if (e.data.from !== WINDOW_ID) listener(e.data.gameId)
+  }
+  return () => channel.close()
 }
 
 // ---- Файлы ----
@@ -124,4 +159,26 @@ export async function addMediaFile(file: File): Promise<MediaRef> {
 export async function deleteMediaIfUnused(id: string) {
   const games = await db.games.toArray()
   if (!games.some((game) => JSON.stringify(game).includes(id))) await db.media.delete(id)
+}
+
+// ---- Сохранность хранилища ----
+
+// Попросить браузер не стирать игры сам, когда на диске мало места. true — браузер обещал не стирать.
+// Chrome решает сам и молча, Firefox может спросить разрешение.
+export async function protectStorage(): Promise<boolean> {
+  try {
+    if (await navigator.storage?.persisted?.()) return true
+    return (await navigator.storage?.persist?.()) ?? false
+  } catch {
+    return false
+  }
+}
+
+// Сколько места занимают игры и файлы этого сайта, байт (null — браузер не говорит)
+export async function storageUsed(): Promise<number | null> {
+  try {
+    return (await navigator.storage?.estimate?.())?.usage ?? null
+  } catch {
+    return null
+  }
 }

@@ -1,5 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
+import ErrorBoundary, { ErrorScreen } from './components/ErrorBoundary'
 import { getGame } from './db'
+import { CHANNEL, closeSavedQuestion, type Message } from './live'
 import EditorApp from './screens/EditorApp'
 import HostApp from './screens/HostApp'
 import LibraryApp from './screens/LibraryApp'
@@ -24,6 +26,34 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onChange)
   }, [])
 
+  // Сломалось — вместо белого экрана объясняем и даём кнопки. Перешли на другой экран — пробуем снова.
+  return (
+    <ErrorBoundary
+      resetKey={hash}
+      fallback={(error, retry) =>
+        hash === '#/screen' ? (
+          <HallError retry={retry} />
+        ) : (
+          <ErrorScreen error={error}>
+            <button type="button" onClick={retry} className={BUTTON}>
+              Попробовать снова
+            </button>
+            <a href="#/" className={BUTTON}>
+              ← Мои игры
+            </a>
+          </ErrorScreen>
+        )
+      }
+    >
+      <Page hash={hash} />
+    </ErrorBoundary>
+  )
+}
+
+const BUTTON = 'flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell'
+
+// Какой экран показать по адресу
+function Page({ hash }: { hash: string }) {
   if (hash === '#/screen') return <ScreenApp />
 
   // key={hash} — при переходе между пультом и редактором игра загружается из хранилища заново
@@ -31,7 +61,7 @@ export default function App() {
   if (play) {
     return (
       <GameRoute key={hash} gameId={decodeURIComponent(play[1])}>
-        {(game) => <HostApp initialGame={game} />}
+        {(game) => <HostGuard game={game} />}
       </GameRoute>
     )
   }
@@ -64,7 +94,7 @@ function GameRoute({ gameId, children }: { gameId: string; children: (game: Game
   const [game, setGame] = useState<Game | null | undefined>(undefined)
 
   useEffect(() => {
-    getGame(gameId).then((g) => setGame(g ?? null))
+    getGame(gameId).then((g) => setGame(g ?? null)) // getGame игру ещё и чинит
   }, [gameId])
 
   if (game === undefined) return <Placeholder text="Загрузка игры…" />
@@ -80,5 +110,51 @@ function Placeholder({ text }: { text: string }) {
         ← Мои игры
       </a>
     </div>
+  )
+}
+
+// Пульт со страховкой: если сломался открытый вопрос — можно закрыть его и вернуться к табло, счёт останется
+function HostGuard({ game }: { game: Game }) {
+  return (
+    <ErrorBoundary
+      fallback={(error, retry) => (
+        <ErrorScreen error={error}>
+          <button
+            type="button"
+            onClick={() => {
+              closeSavedQuestion(game.id)
+              retry()
+            }}
+            className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90"
+          >
+            Закрыть вопрос и вернуться к табло
+          </button>
+          <button type="button" onClick={retry} className={BUTTON}>
+            Попробовать снова
+          </button>
+          <a href="#/" className={BUTTON}>
+            ← Мои игры
+          </a>
+        </ErrorScreen>
+      )}
+    >
+      <HostApp initialGame={game} />
+    </ErrorBoundary>
+  )
+}
+
+// Экран зала сломался: зрители видят спокойный экран, а не ошибку. Клик или следующее действие пульта — снова
+function HallError({ retry }: { retry: () => void }) {
+  useEffect(() => {
+    const channel = new BroadcastChannel(CHANNEL)
+    channel.onmessage = (e: MessageEvent<Message>) => {
+      if (e.data.type === 'state') retry()
+    }
+    return () => channel.close()
+  }, [retry])
+  return (
+    <button type="button" onClick={retry} className="flex min-h-screen w-full items-center justify-center bg-bg text-2xl text-muted">
+      Секунду…
+    </button>
   )
 }

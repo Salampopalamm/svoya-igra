@@ -1,5 +1,7 @@
 import type JSZipType from 'jszip'
-import { getMedia, saveGame, saveMedia, upgradeGame } from './db'
+import { APP_KEY } from './site'
+import { getMedia, saveGame, saveMedia } from './db'
+import { repairGame } from './repairGame'
 import { allMediaIds } from './game'
 import type { Game, MediaType } from './types'
 
@@ -87,23 +89,47 @@ export async function importGame(file: File): Promise<Game> {
   } catch {
     throw new Error(`Описание игры в «${file.name}» повреждено.`)
   }
-  if (manifest.format !== FORMAT || !manifest.game?.rounds) {
+  const repaired = repairGame(manifest?.game)
+  if (manifest?.format !== FORMAT || !repaired || !Array.isArray(manifest.game?.rounds)) {
     throw new Error(`«${file.name}» — не файл игры «Своя игра».`)
   }
   if (manifest.version > VERSION) {
     throw new Error('Файл сохранён более новой версией программы. Обновите страницу и попробуйте снова.')
   }
 
-  for (const entry of manifest.media ?? []) {
+  for (const entry of Array.isArray(manifest.media) ? manifest.media : []) {
+    if (!entry || typeof entry.id !== 'string' || typeof entry.path !== 'string') continue // испорченная запись — пропускаем
     const data = zip.file(entry.path)
     if (!data) continue // файла нет в архиве — вопрос покажет «файл не найден»
     const ext = entry.path.split('.').pop()?.toLowerCase() ?? ''
     const mime = entry.mime || mimeByExtension[ext] || 'application/octet-stream'
     const blob = new Blob([await data.async('arraybuffer')], { type: mime })
-    await saveMedia({ id: entry.id, type: entry.type, name: entry.name, blob })
+    const type = (['image', 'gif', 'video', 'audio'] as const).includes(entry.type) ? entry.type : 'image'
+    await saveMedia({ id: entry.id, type, name: String(entry.name ?? 'файл'), blob })
   }
 
-  const game = upgradeGame({ ...manifest.game, id: crypto.randomUUID() })
+  // Починенная игра (repairGame.ts): чего не хватало — заполнено, мусор выброшен
+  const game = { ...repaired, id: crypto.randomUUID() }
   await saveGame(game)
   return game
+}
+
+// Когда игру последний раз сохраняли файлом — чтобы напомнить в «Моих играх», если свежей копии нет.
+// Лежит в localStorage этого браузера: id игры → время.
+const EXPORTED_KEY = `${APP_KEY}:exported`
+
+export function exportedAt(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(EXPORTED_KEY) ?? '{}') as Record<string, number>
+  } catch {
+    return {}
+  }
+}
+
+export function markExported(gameId: string) {
+  try {
+    localStorage.setItem(EXPORTED_KEY, JSON.stringify({ ...exportedAt(), [gameId]: Date.now() }))
+  } catch {
+    // хранилище недоступно — просто не напомним
+  }
 }
