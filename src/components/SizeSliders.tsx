@@ -1,4 +1,4 @@
-import { hallSizes, SIZE_MAX, SIZE_MIN, SIZE_NAMES, SIZE_STEP } from '../theme'
+import { DEFAULT_SIZES, hallSizes, SIZE_MAX, SIZE_MIN, SIZE_NAMES, SIZE_STEP } from '../theme'
 import type { HallSizes, Theme } from '../types'
 
 type Props = {
@@ -32,7 +32,7 @@ export default function SizeSliders({ theme, onChange }: Props) {
       {changed && (
         <button
           type="button"
-          onClick={() => onChange({ board: 100, teams: 100, photos: 100, media: 100 })}
+          onClick={() => onChange(DEFAULT_SIZES)}
           className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell"
         >
           Вернуть все по 100%

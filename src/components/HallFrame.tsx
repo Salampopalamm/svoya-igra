@@ -10,7 +10,7 @@ export function HallFrame({ theme, className, children }: { theme: Theme; classN
   if (theme.background && background.status === 'ready') style.background = backgroundWithImage(theme, background.url)
 
   return (
-    <div style={style} className={`min-h-screen bg-bg text-white ${theme.grayscaleMedia ? 'gray-media' : ''} ${className}`}>
+    <div data-hall style={style} className={`min-h-screen bg-bg text-white ${theme.grayscaleMedia ? 'gray-media' : ''} ${className}`}>
       {children}
     </div>
   )

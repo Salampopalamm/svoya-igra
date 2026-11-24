@@ -36,10 +36,20 @@ export const SIZE_NAMES: { id: keyof HallSizes; name: string }[] = [
   { id: 'teams', name: 'Команды и счёт' },
   { id: 'photos', name: 'Фото игроков' },
   { id: 'media', name: 'Картинки и видео' },
+  { id: 'text', name: 'Текст вопроса и ответа' },
+  { id: 'timer', name: 'Таймер' },
 ]
 
+export const DEFAULT_SIZES: HallSizes = { board: 100, teams: 100, photos: 100, media: 100, text: 100, timer: 100 }
+
+// Чего в старой игре нет (её сохранили до новых ползунков) — 100%
 export function hallSizes(theme: Theme): HallSizes {
-  return { board: 100, teams: 100, photos: 100, media: 100, ...theme.sizes }
+  return { ...DEFAULT_SIZES, ...theme.sizes }
+}
+
+// Размер в допустимых пределах (растягивание мышью может дать что угодно)
+export function clampSize(value: number): number {
+  return Math.min(SIZE_MAX, Math.max(SIZE_MIN, Math.round(value / SIZE_STEP) * SIZE_STEP))
 }
 
 // Готовые фирменные цвета для быстрого выбора
@@ -78,6 +88,8 @@ export function hallThemeStyle(theme: Theme): CSSProperties {
     '--teams-scale': sizes.teams / 100,
     '--photos-scale': sizes.photos / 100,
     '--media-scale': sizes.media / 100,
+    '--text-scale': sizes.text / 100,
+    '--timer-scale': sizes.timer / 100,
     '--color-bg': tone.bg,
     '--color-cell': tone.cell,
     '--color-line': tone.line,

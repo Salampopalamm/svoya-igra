@@ -40,12 +40,13 @@ import {
 import { VideoContext, type VideoCommand } from '../videoControl'
 import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
-import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById } from '../game'
+import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById, updateQuestion } from '../game'
+import { setContentPlace } from '../placement'
 import { chooseOption, startBranch } from '../tree'
 import { describeRule, readyRules } from '../rules'
 import { BranchBody, BranchControls } from '../components/BranchHost'
-import type { Game, Question, Rule, Theme } from '../types'
-import { FONTS, TONES } from '../theme'
+import type { Game, PlaceTarget, Placement, Question, Rule, Theme } from '../types'
+import { clampSize, FONTS, hallSizes, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { usePreload } from '../preload'
 
@@ -500,6 +501,17 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     void updateStoredGame(game.id, (g) => ({ ...g, theme: { ...g.theme, ...patch } }))
   }
 
+  // Ведущий передвинул объект слайда со своей расстановкой прямо в зале — правим вопрос в партии и в хранилище
+  function changeQuestionPlace(questionId: string, target: PlaceTarget, place: Placement) {
+    const change = (q: Question) => setContentPlace(q, target, place)
+    setLive((s) => ({ ...s, game: updateQuestion(s.game, questionId, change) }))
+    void updateStoredGame(game.id, (g) => updateQuestion(g, questionId, change))
+  }
+
+  function toggleResizeHall() {
+    setLive((s) => ({ ...s, resizeHall: !s.resizeHall }))
+  }
+
   function toggleHallMouse() {
     setLive((s) => ({ ...s, hallMouse: !hallMouseOn(s) }))
   }
@@ -573,6 +585,14 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Ведущий нажал мышью на экране зала (включено «Мышь в зале»): делаем то же, что кнопки пульта
   function handleHallAction(action: HallAction) {
+    // «Растянуть в зале» — свой режим, работает и без «Мыши в зале»
+    if (action.kind === 'size' || action.kind === 'place' || action.kind === 'resize-done') {
+      if (!live.resizeHall) return
+      if (action.kind === 'size') changeTheme({ sizes: { ...hallSizes(game.theme), [action.id]: clampSize(action.value) } })
+      else if (action.kind === 'place') changeQuestionPlace(action.questionId, action.target, action.place)
+      else toggleResizeHall()
+      return
+    }
     if (!hallMouseOn(live) || live.screenHidden) return
     const tree = currentCell.question?.tree
     switch (action.kind) {
@@ -822,6 +842,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-40"
           >
             {game.theme.showPhotos ? 'Свернуть фото' : 'Показать фото'}
+          </button>
+        )
+      case 'hall-resize':
+        return (
+          <button
+            type="button"
+            onClick={toggleResizeHall}
+            aria-pressed={!!live.resizeHall}
+            title="В зале у табло, команд, текста, картинок и таймера появятся уголки — тяните их мышью"
+            className={toggleClass(!!live.resizeHall)}
+          >
+            Растянуть в зале: {live.resizeHall ? 'вкл' : 'выкл'}
           </button>
         )
       case 'sizes':

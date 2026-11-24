@@ -4,6 +4,7 @@ import { contentMedia } from '../pictures'
 import { newTree, treeContents } from '../tree'
 import type { Content, Question } from '../types'
 import { ContentEditor, SmallButton } from './ContentEditor'
+import type { PreviewStart } from './HallPreview'
 import TreeEditor from './TreeEditor'
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   onMediaRemoved: (mediaId: string) => void // файл убрали из вопроса — его можно удалить из хранилища
   onDelete: () => void
   onClose: () => void
-  onPreview: () => void // показать вопрос так, как его увидит зал
+  onPreview: (start?: PreviewStart) => void // показать вопрос так, как его увидит зал (с этого слайда, сразу расставлять)
   hiddenQuestions: HiddenChoice[] // скрытые вопросы игры — их может открыть вариант дерева
   canHide: boolean // в финале скрытых вопросов нет
 }
@@ -143,7 +144,7 @@ export default function QuestionEditor({
           </div>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={onPreview} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
+          <button type="button" onClick={() => onPreview()} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
             Предпросмотр
           </button>
           <button type="button" onClick={onDelete} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-bg">
@@ -231,6 +232,7 @@ export default function QuestionEditor({
                 warning={i === 0 && problem === 'no-question' ? '⚠ впишите вопрос или добавьте файл' : undefined}
                 onChange={(change) => changeSlide(i, change)}
                 onMediaRemoved={onMediaRemoved}
+                onArrange={() => onPreview({ slide: i, arrange: true })}
               />
             </section>
           ))}
@@ -252,6 +254,7 @@ export default function QuestionEditor({
               warning={problem === 'no-answer' ? '⚠ впишите ответ' : undefined}
               onChange={(change) => onChange((q) => ({ ...q, answer: change(q.answer) }))}
               onMediaRemoved={onMediaRemoved}
+              onArrange={() => onPreview({ answer: true, arrange: true })}
             />
           </section>
         </>

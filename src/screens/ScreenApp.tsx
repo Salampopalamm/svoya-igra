@@ -7,6 +7,8 @@ import TeamIcon from '../components/TeamIcon'
 import TeamsColumn from '../components/TeamsColumn'
 import FinalScreen from '../components/FinalScreen'
 import HallMousePanel from '../components/HallMousePanel'
+import { Resizable } from '../components/Resizable'
+import { ResizeContext } from '../hallResize'
 import { MediaView } from '../components/MediaView'
 import { finalStateOf, remover } from '../final'
 import { formatPoints, stepById, type BranchState } from '../tree'
@@ -126,11 +128,15 @@ export default function ScreenApp() {
     channelRef.current?.postMessage({ type: 'hall-action', action } satisfies Message)
   }
 
+  // «Растянуть в зале»: у объектов рамки и уголки; размеры и расстановку запоминает пульт
+  const resizing = !!live.resizeHall
+
   // Ветвящийся вопрос: какой шаг показывать, его варианты и (в конце) итог ветки
   const branchNode = question?.tree && live.branch ? stepById(question.tree, live.branch.nodeId) : undefined
   const step =
     question?.tree && live.branch && branchNode
       ? {
+          nodeId: branchNode.id,
           content: branchNode.content,
           answer: branchNode.answer,
           options: question.tree.branchBy === 'choice' && !live.branch.done ? branchNode.options.map((o) => o.label) : [],
@@ -140,6 +146,13 @@ export default function ScreenApp() {
               : undefined,
         }
       : undefined
+
+  // На экране слайд (или ответ) со своей расстановкой — его объекты в этом режиме можно ещё и двигать
+  const placedNow =
+    !!question &&
+    !!(showAnswer && (step ? step.answer : question.answer)?.place
+      ? true
+      : (branchNode?.content ?? question.slides[slideIndex])?.place)
 
   const content =
     category && question ? (
@@ -151,20 +164,23 @@ export default function ScreenApp() {
           showAnswer={showAnswer}
           step={step}
           timer={live.timer ?? null}
+          onPlace={resizing ? (target, place) => act({ kind: 'place', questionId: question.id, target, place }) : undefined}
         />
       </VideoContext.Provider>
     ) : final ? (
       <FinalScreen game={game} round={round} final={final} />
     ) : (
       // Размер табло — ползунок «Табло» (CSS zoom увеличивает ячейки и надписи целиком)
-      <div className="[zoom:var(--board-scale,1)]">
-        <Board
-          round={round}
-          interactive={false}
-          unlockedIds={live.unlockedIds ?? []}
-          onHallClick={hallMouseOn(live) ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
-        />
-      </div>
+      <Resizable id="board">
+        <div className="[zoom:var(--board-scale,1)]">
+          <Board
+            round={round}
+            interactive={false}
+            unlockedIds={live.unlockedIds ?? []}
+            onHallClick={hallMouseOn(live) && !resizing ? (categoryId, questionId) => act({ kind: 'open', categoryId, questionId }) : undefined}
+          />
+        </div>
+      </Resizable>
     )
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
@@ -180,93 +196,113 @@ export default function ScreenApp() {
   const photosView = game.theme.teamView === 'photos'
 
   return (
-    <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
-      {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
-      {live.shownMedia && (
-        <div key={live.shownMedia.id} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-10">
-          <VideoContext.Provider
-            value={{ video: { mediaId: live.shownMedia.id, playing: true, time: 0, volume: 1, seq: 1 }, onBlocked: soundBlocked }}
-          >
-            <MediaView media={live.shownMedia} mode="hall" className="max-h-full max-w-full" />
-          </VideoContext.Provider>
-        </div>
-      )}
-      {hallMouseOn(live) && question && (
-        <HallMousePanel
-          question={question}
-          slideIndex={slideIndex}
-          showAnswer={showAnswer}
-          teams={game.teams}
-          answeringTeam={answeringTeam}
-          triedTeamIds={triedTeamIds}
-          timer={live.timer ?? null}
-          scoring={!final && !question.tree && !live.viewOnly}
-          final={!!final}
-          onAction={act}
-        />
-      )}
-      {/* Во время вопроса шапки нет — всё место вопросу и картинкам; в репетиции метка остаётся в углу */}
-      {questionOpen && live.rehearsal && (
-        <span className="fixed top-3 left-3 z-20 rounded-lg border-2 border-dashed border-white px-3 py-1 text-sm font-semibold tracking-widest">
-          РЕПЕТИЦИЯ
-        </span>
-      )}
-      {!questionOpen && (
-      <header className="flex items-center justify-between">
-        <GameLogo
-          theme={game.theme}
-          className="h-14 max-w-60"
-          fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
-        />
-        <span className="flex items-center gap-4">
-          <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
-          {/* Репетиция: в зале видно, что это не настоящая игра */}
-          {live.rehearsal && (
-            <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
-              РЕПЕТИЦИЯ
-            </span>
-          )}
-        </span>
-        {!final && turnTeam ? (
-          <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
-            <TeamIcon team={turnTeam} size={28} />
-            Ход: {turnTeam.name}
-          </span>
-        ) : (
-          <span className="text-sm text-muted">F11 — во весь экран</span>
+    <ResizeContext.Provider value={resizing ? (id, value) => act({ kind: 'size', id, value }) : null}>
+      <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
+        {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
+        {live.shownMedia && (
+          <div key={live.shownMedia.id} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-10">
+            <VideoContext.Provider
+              value={{ video: { mediaId: live.shownMedia.id, playing: true, time: 0, volume: 1, seq: 1 }, onBlocked: soundBlocked }}
+            >
+              <MediaView media={live.shownMedia} mode="hall" className="max-h-full max-w-full" />
+            </VideoContext.Provider>
+          </div>
         )}
-      </header>
-      )}
-
-      {photosView ? (
-        // Колонка команд шире или уже вместе с ползунком «Команды и счёт», внутри всё увеличено так же
-        <div className="grid flex-1 gap-8" style={{ gridTemplateColumns: 'minmax(0, 1fr) calc(380px * var(--teams-scale, 1))' }}>
-          <div className="flex flex-col">{main}</div>
-          <div className="[zoom:var(--teams-scale,1)]">
-            <TeamsColumn
+        {resizing && (
+          <div className="fixed inset-x-0 top-3 z-40 flex justify-center px-6">
+            <div className="flex flex-wrap items-center gap-3 rounded-2xl border-2 border-line bg-cell/95 p-2 pl-5 text-lg shadow-2xl">
+              <span>Тяните уголки ◢ — размер{placedNow ? ', объекты слайда — место' : ''}</span>
+              <button
+                type="button"
+                onClick={() => act({ kind: 'resize-done' })}
+                className="h-12 rounded-xl bg-accent px-6 font-semibold text-on-accent hover:opacity-90"
+              >
+                Готово
+              </button>
+            </div>
+          </div>
+        )}
+        {hallMouseOn(live) && !resizing && question && (
+          <HallMousePanel
+            question={question}
+            slideIndex={slideIndex}
+            showAnswer={showAnswer}
             teams={game.teams}
-            players={game.players}
-            activeTeamId={activeTeamId}
-            activeLabel={activeLabel}
-            outTeamIds={outTeamIds}
-            showPhotos={game.theme.showPhotos}
-            />
+            answeringTeam={answeringTeam}
+            triedTeamIds={triedTeamIds}
+            timer={live.timer ?? null}
+            scoring={!final && !question.tree && !live.viewOnly}
+            final={!!final}
+            onAction={act}
+          />
+        )}
+        {/* Во время вопроса шапки нет — всё место вопросу и картинкам; в репетиции метка остаётся в углу */}
+        {questionOpen && live.rehearsal && (
+          <span className="fixed top-3 left-3 z-20 rounded-lg border-2 border-dashed border-white px-3 py-1 text-sm font-semibold tracking-widest">
+            РЕПЕТИЦИЯ
+          </span>
+        )}
+        {!questionOpen && (
+        <header className="flex items-center justify-between">
+          <GameLogo
+            theme={game.theme}
+            className="h-14 max-w-60"
+            fallback={<span className="font-display text-2xl">{game.title.toUpperCase()}</span>}
+          />
+          <span className="flex items-center gap-4">
+            <span className="font-display text-2xl">{round.title.toUpperCase()}</span>
+            {/* Репетиция: в зале видно, что это не настоящая игра */}
+            {live.rehearsal && (
+              <span className="rounded-lg border-2 border-dashed border-white px-3 py-1 text-lg font-semibold tracking-widest">
+                РЕПЕТИЦИЯ
+              </span>
+            )}
+          </span>
+          {!final && turnTeam ? (
+            <span className="flex items-center gap-2.5 rounded-xl border-[3px] border-accent bg-cell px-5 py-2 text-xl font-semibold">
+              <TeamIcon team={turnTeam} size={28} />
+              Ход: {turnTeam.name}
+            </span>
+          ) : (
+            <span className="text-sm text-muted">F11 — во весь экран</span>
+          )}
+        </header>
+        )}
+
+        {photosView ? (
+          // Колонка команд шире или уже вместе с ползунком «Команды и счёт», внутри всё увеличено так же
+          <div className="grid flex-1 gap-8" style={{ gridTemplateColumns: 'minmax(0, 1fr) calc(380px * var(--teams-scale, 1))' }}>
+            <div className="flex flex-col">{main}</div>
+            <Resizable id="teams">
+              <div className="[zoom:var(--teams-scale,1)]">
+                <TeamsColumn
+                  teams={game.teams}
+                  players={game.players}
+                  activeTeamId={activeTeamId}
+                  activeLabel={activeLabel}
+                  outTeamIds={outTeamIds}
+                  showPhotos={game.theme.showPhotos}
+                />
+              </div>
+            </Resizable>
           </div>
-        </div>
-      ) : (
-        <>
-          {main}
-          <div className="[zoom:var(--teams-scale,1)]">
-            <Scoreboard
-              teams={game.teams}
-              activeTeamId={activeTeamId}
-              activeLabel={activeLabel}
-              outTeamIds={outTeamIds}
-            />
-          </div>
-        </>
-      )}
-    </HallFrame>
+        ) : (
+          <>
+            {main}
+            <Resizable id="teams">
+              <div className="[zoom:var(--teams-scale,1)]">
+                <Scoreboard
+                  teams={game.teams}
+                  activeTeamId={activeTeamId}
+                  activeLabel={activeLabel}
+                  outTeamIds={outTeamIds}
+                />
+              </div>
+            </Resizable>
+          </>
+        )}
+      </HallFrame>
+    </ResizeContext.Provider>
   )
 }
 

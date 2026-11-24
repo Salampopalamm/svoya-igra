@@ -1,6 +1,6 @@
 import { APP_KEY } from './site'
 import type { BranchState } from './tree'
-import type { Game, MediaRef } from './types'
+import type { Game, HallSizes, MediaRef, PlaceTarget, Placement } from './types'
 
 // «Живое» состояние игры, которое пульт передаёт экрану зала.
 // Предпросмотр и история отмен сюда НЕ входят — они существуют только на пульте.
@@ -19,6 +19,7 @@ export type LiveState = {
   viewOnly?: boolean // открыт уже сыгранный вопрос — только показать: счёт и ход не меняются
   screenHidden: boolean // экран зала скрыт заставкой
   hallMouse?: boolean // управлять мышью прямо на экране зала (ячейки, панель внизу); пусто — включено, false — ведущий выключил
+  resizeHall?: boolean // режим «Растянуть в зале»: у объектов в зале рамки и уголки, их тянут мышью
   timer: TimerState | null // таймер открытого вопроса (null — у вопроса нет таймера)
   video: VideoState | null // видео в зале, которым управляет ведущий (null — ни одно не запускали)
   final?: FinalState | null // ход финального раунда (функции — в final.ts); в старых сохранениях его нет
@@ -109,6 +110,10 @@ export type HallAction =
   | { kind: 'correct' } // «Верно» отвечающей команде
   | { kind: 'wrong' } // «Неверно» отвечающей команде
   | { kind: 'close' } // закрыть вопрос, вернуться к табло
+  // Режим «Растянуть в зале» (работает и без «Мыши в зале»):
+  | { kind: 'size'; id: keyof HallSizes; value: number } // ведущий растянул объект — новый размер, %
+  | { kind: 'place'; questionId: string; target: PlaceTarget; place: Placement } // передвинул объект слайда со своей расстановкой
+  | { kind: 'resize-done' } // «Готово» — выключить режим
 
 // Канал связи между окнами одного браузера
 export const CHANNEL = APP_KEY

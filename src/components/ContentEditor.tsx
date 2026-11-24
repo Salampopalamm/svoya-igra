@@ -53,13 +53,14 @@ export function SmallButton({ onClick, disabled, label, children }: {
 }
 
 // Текст + файл: один слайд или ответ. Файл можно выбрать кнопкой или перетащить мышкой.
-export function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved }: {
+export function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved, onArrange }: {
   content: Content
   textLabel: string
   placeholder: string
   warning?: string // недочёт: показывается вместо подсказки, заметнее
   onChange: (change: (c: Content) => Content) => void
   onMediaRemoved: (mediaId: string) => void
+  onArrange?: () => void // открыть предпросмотр и расставить текст и картинки самому
 }) {
   const [busy, setBusy] = useState(false) // файл сейчас сохраняется
   const [error, setError] = useState<string | null>(null)
@@ -248,6 +249,25 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
         {media && pictures.length === 1 && (
           <button type="button" onClick={detach} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
             Убрать файл
+          </button>
+        )}
+        {onArrange && (content.text || media) && (
+          <button type="button" onClick={onArrange} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
+            {content.place ? 'Расстановка: своя · изменить' : 'Расставить самому…'}
+          </button>
+        )}
+        {content.place && (
+          <button
+            type="button"
+            onClick={() => onChange((c) => {
+              const next = { ...c }
+              delete next.place
+              return next
+            })}
+            title="Убрать свою расстановку — слайд разложится сам"
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            Вернуть авто
           </button>
         )}
         {!media && <span className="text-sm text-muted">или перетащите файл сюда · до {MAX_FILE_MB} МБ</span>}

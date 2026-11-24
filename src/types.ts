@@ -14,7 +14,20 @@ export type Content = {
   media?: MediaRef // первый (или единственный) файл
   more?: MediaRef[] // ещё картинки рядом с первой (только если первая — картинка; всего до 8, функции — pictures.ts)
   layout?: PictureLayout // как расставить несколько картинок; пусто — по их числу
+  place?: Placement // своя расстановка (ведущий расставил сам); пусто — слайд раскладывается сам
 }
+
+// Рамка объекта на слайде — в процентах от области вопроса в зале (0–100)
+export type Box = { x: number; y: number; w: number; h: number }
+
+// Своя расстановка слайда: где текст и где каждая картинка (media[i] — i-й файл из contentMedia)
+export type Placement = { text?: Box; media?: Box[] }
+
+// Что расставляем: слайд вопроса, ответ или шаг ветвящегося вопроса (его текст или ответ)
+export type PlaceTarget =
+  | { kind: 'slide'; index: number }
+  | { kind: 'answer' }
+  | { kind: 'node'; nodeId: string; answer: boolean }
 
 // Шаблон для нескольких картинок: по 1–4 в ряд или одна большая слева и остальные справа
 export type PictureLayout = 'cols-1' | 'cols-2' | 'cols-3' | 'cols-4' | 'big-left'
@@ -41,6 +54,8 @@ export type HallSizes = {
   teams: number // плашки команд: название, счёт, значок
   photos: number // фото игроков
   media: number // картинки и видео вопросов и ответов
+  text: number // текст вопроса и ответа
+  timer: number // таймер вопроса
 }
 
 export type Player = {

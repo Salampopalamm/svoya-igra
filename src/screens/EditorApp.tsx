@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import HallPreview from '../components/HallPreview'
+import HallPreview, { type PreviewStart } from '../components/HallPreview'
 import QuestionEditor from '../components/QuestionEditor'
 import ThemeEditor from '../components/ThemeEditor'
 import RulesEditor from '../components/RulesEditor'
@@ -61,7 +61,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   const { game, change, saved, dropMedia } = useSavedGame(initialGame)
   const [selectedId, setSelectedId] = useState<string | null>(null) // какой вопрос открыт
   const [roundId, setRoundId] = useState<string | null>(initialGame.rounds[0]?.id ?? null) // какой раунд открыт
-  const [previewing, setPreviewing] = useState(false) // открыт предпросмотр вопроса «как в зале»
+  const [previewing, setPreviewing] = useState<PreviewStart | null>(null) // открыт предпросмотр вопроса «как в зале» (с чего начать)
 
   const round = roundById(game, roundId)
   const isFinal = round.kind === 'final' // финал: каждая категория — тема с одним вопросом
@@ -224,7 +224,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           onMediaRemoved={(id) => dropMedia(id)}
           onDelete={() => deleteQuestion(question)}
           onClose={() => setSelectedId(null)}
-          onPreview={() => setPreviewing(true)}
+          onPreview={(start) => setPreviewing(start ?? {})}
           hiddenQuestions={hiddenQuestions(game).filter((h) => h.id !== question.id)}
           canHide={!isFinal}
         />
@@ -377,10 +377,12 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
       {previewing && category && question && (
         <HallPreview
           theme={game.theme}
-          gameTitle={game.title}
-          roundTitle={round.title}
+          teams={game.teams}
+          players={game.players}
+          start={previewing}
+          onChange={(update) => change((g) => updateQuestion(g, question.id, update))}
           question={question}
-          onClose={() => setPreviewing(false)}
+          onClose={() => setPreviewing(null)}
         />
       )}
     </div>

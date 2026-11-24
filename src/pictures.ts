@@ -63,6 +63,8 @@ export function withoutPicture(content: Content, index: number): Content {
   const [media, ...more] = rest
   const next: Content = { ...content, media, more: more.length > 0 ? more : undefined }
   if (!media) delete next.media
+  // Своя расстановка: рамка убранной картинки уходит вместе с ней, остальные стоят на местах
+  if (content.place?.media) next.place = { ...content.place, media: content.place.media.filter((_, i) => i !== index) }
   if (more.length === 0) {
     delete next.more
     delete next.layout
