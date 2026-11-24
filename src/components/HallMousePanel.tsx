@@ -51,17 +51,17 @@ export default function HallMousePanel({
 
   const fade = `transition-opacity duration-300 ${visible ? 'opacity-100' : 'pointer-events-none opacity-0'}`
 
-  // Свёрнута: в углу только маленькая кнопка — панель не закрывает картинки
+  // Свёрнута: вверху посередине только маленькая кнопка — низ экрана свободен для картинок и команд
   if (collapsed) {
     return (
-      <div className={`fixed right-6 bottom-6 z-30 ${fade}`}>
+      <div className={`fixed inset-x-0 top-3 z-30 flex justify-center ${fade}`}>
         <button
           type="button"
           onClick={() => toggle(false)}
           aria-label="Развернуть панель ведущего"
-          className="h-14 rounded-xl border-2 border-line bg-cell/95 px-4 text-lg font-semibold shadow-2xl hover:border-white"
+          className="h-11 rounded-xl border-2 border-line bg-cell/95 px-4 text-lg font-semibold shadow-2xl hover:border-white"
         >
-          ▴ Панель
+          ▾ Панель
         </button>
       </div>
     )
