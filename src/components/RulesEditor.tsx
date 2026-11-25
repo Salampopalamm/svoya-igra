@@ -1,7 +1,21 @@
 import { useState } from 'react'
 import { addMediaFile } from '../db'
 import { hiddenQuestions } from '../game'
-import { hiddenRounds, newRule, playableQuestions, ruleProblem, THEN_NAMES, WHEN_NAMES, type ThenKind, type WhenKind } from '../rules'
+import {
+  categoryChoices,
+  hasTriggerTeam,
+  hiddenRounds,
+  needsTeam,
+  newRule,
+  playableQuestions,
+  ruleProblem,
+  TARGET_NAMES,
+  THEN_NAMES,
+  WHEN_NAMES,
+  type TeamTarget,
+  type ThenKind,
+  type WhenKind,
+} from '../rules'
 import type { Game, Rule } from '../types'
 import { MediaView } from './MediaView'
 
@@ -90,7 +104,9 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
           value={when.kind}
           onChange={(e) => {
             const kind = e.target.value as WhenKind
-            onChange((r) => ({ ...r, when: { kind, value: kind === 'score-reached' ? 1000 : '' } }))
+            // У нового условия нет своей команды — баллы и ход уходят отстающей
+            const lost = rule.then.target === 'trigger' && !hasTriggerTeam(kind)
+            onChange((r) => ({ ...r, when: { kind, value: DEFAULT_VALUE[kind] ?? '' }, then: lost ? { ...r.then, target: 'last' } : r.then }))
           }}
           aria-label={`Условие правила ${n}`}
           className={field}
@@ -102,12 +118,39 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
           ))}
         </select>
 
-        {when.kind === 'score-reached' && (
-          <ScoreInput
+        {(when.kind === 'score-reached' || when.kind === 'behind') && (
+          <NumberInput
             value={Number(when.value) || 0}
+            unit="баллов"
             label={`Сколько баллов в правиле ${n}`}
             onChange={(value) => onChange((r) => ({ ...r, when: { ...r.when, value } }))}
           />
+        )}
+        {when.kind === 'wrong-streak' && (
+          <NumberInput
+            value={Number(when.value) || 0}
+            unit="раз"
+            label={`Сколько ошибок подряд в правиле ${n}`}
+            onChange={(value) => onChange((r) => ({ ...r, when: { ...r.when, value } }))}
+          />
+        )}
+        {when.kind === 'category-played' && (
+          <select
+            value={String(when.value)}
+            onChange={(e) => {
+              const value = e.target.value
+              onChange((r) => ({ ...r, when: { ...r.when, value } }))
+            }}
+            aria-label={`Категория в правиле ${n}`}
+            className={`${field} max-w-72`}
+          >
+            <option value="">— выберите категорию —</option>
+            {categoryChoices(game).map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
         )}
         {when.kind === 'round-finished' && (
           <select
@@ -152,7 +195,9 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
           onChange={(e) => {
             const kind = e.target.value as ThenKind
             if (then.media) onMediaRemoved(then.media.id)
-            onChange((r) => ({ ...r, then: { kind, target: '' } }))
+            // Кому баллы или ход: по умолчанию — команде из условия, а если у условия её нет — отстающей
+            const target = needsTeam(kind) ? (hasTriggerTeam(when.kind) ? 'trigger' : 'last') : ''
+            onChange((r) => ({ ...r, then: { kind, target, ...(kind === 'add-points' ? { points: 100 } : {}) } }))
           }}
           aria-label={`Действие правила ${n}`}
           className={field}
@@ -201,6 +246,35 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
           </select>
         )}
 
+        {then.kind === 'add-points' && (
+          <NumberInput
+            value={then.points ?? 0}
+            unit="баллов"
+            allowNegative
+            label={`Сколько баллов дать в правиле ${n} (минус — отнять)`}
+            onChange={(points) => onChange((r) => ({ ...r, then: { ...r.then, points } }))}
+          />
+        )}
+        {needsTeam(then.kind) && (
+          <select
+            value={then.target}
+            onChange={(e) => {
+              const target = e.target.value
+              onChange((r) => ({ ...r, then: { ...r.then, target } }))
+            }}
+            aria-label={`Какой команде в правиле ${n}`}
+            className={field}
+          >
+            {(Object.keys(TARGET_NAMES) as TeamTarget[])
+              .filter((t) => t !== 'trigger' || hasTriggerTeam(when.kind) || then.target === 'trigger') // неверный выбор видно — рядом подсказка
+              .map((t) => (
+                <option key={t} value={t}>
+                  {TARGET_NAMES[t]}
+                </option>
+              ))}
+          </select>
+        )}
+
         <button
           type="button"
           onClick={onRemove}
@@ -210,6 +284,20 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
           Удалить
         </button>
       </div>
+
+      {then.kind === 'show-text' && (
+        <input
+          value={then.text ?? ''}
+          onChange={(e) => {
+            const text = e.target.value
+            onChange((r) => ({ ...r, then: { ...r.then, text } }))
+          }}
+          placeholder="Например: «Бонусный раунд!» или «Совы — на коне!»"
+          aria-label={`Надпись в зале в правиле ${n}`}
+          maxLength={120}
+          className={`${field} w-full px-3`}
+        />
+      )}
 
       {then.kind === 'show-media' && (
         <div className="flex flex-wrap items-center gap-3">
@@ -235,24 +323,33 @@ function RuleRow({ game, rule, index, onChange, onRemove, onMediaRemoved }: {
   )
 }
 
-// Сколько баллов: печатаем свободно, в правило попадает только целое число больше нуля
-function ScoreInput({ value, label, onChange }: { value: number; label: string; onChange: (value: number) => void }) {
+// Новое условие — с понятным числом сразу
+const DEFAULT_VALUE: Partial<Record<WhenKind, number>> = { 'score-reached': 1000, 'wrong-streak': 3, behind: 500 }
+
+// Число: печатаем свободно, в правило попадает только целое больше нуля (с allowNegative — любое, кроме нуля)
+function NumberInput({ value, unit, label, allowNegative, onChange }: {
+  value: number
+  unit: string
+  label: string
+  allowNegative?: boolean
+  onChange: (value: number) => void
+}) {
   const [text, setText] = useState(String(value))
   return (
     <span className="flex items-center gap-2">
       <input
-        inputMode="numeric"
+        inputMode={allowNegative ? 'text' : 'numeric'}
         value={text}
         onChange={(e) => {
           setText(e.target.value)
-          const n = Number(e.target.value.trim())
-          if (Number.isInteger(n) && n > 0) onChange(n)
+          const n = Number(e.target.value.trim().replace('−', '-'))
+          if (Number.isInteger(n) && (allowNegative ? n !== 0 : n > 0)) onChange(n)
         }}
         onBlur={() => setText(String(value))}
         aria-label={label}
         className="h-11 w-24 rounded-lg border border-line bg-bg px-3 text-white focus:border-white focus:outline-none"
       />
-      <span className="text-sm text-muted">баллов</span>
+      <span className="text-sm text-muted">{unit}</span>
     </span>
   )
 }

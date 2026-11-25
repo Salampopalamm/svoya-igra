@@ -160,13 +160,15 @@ function rule(v: Raw): Rule | null {
   return {
     id: id(v.id),
     when: {
-      kind: oneOf(v.when.kind, ['score-reached', 'round-finished', 'question-played'] as const, 'score-reached'),
+      kind: oneOf(v.when.kind, ['score-reached', 'round-finished', 'question-played', 'category-played', 'wrong-streak', 'behind'] as const, 'score-reached'),
       value: typeof value === 'number' ? value : text(value),
     },
     then: {
-      kind: oneOf(v.then.kind, ['open-round', 'unlock-question', 'add-points', 'show-media'] as const, 'unlock-question'),
+      kind: oneOf(v.then.kind, ['open-round', 'unlock-question', 'add-points', 'show-media', 'give-turn', 'show-text'] as const, 'unlock-question'),
       target: text(v.then.target),
       ...(mediaRef(v.then.media) ? { media: mediaRef(v.then.media) } : {}),
+      ...(maybeNumber(v.then.points) !== undefined ? { points: maybeNumber(v.then.points) } : {}),
+      ...(maybeText(v.then.text) ? { text: maybeText(v.then.text) } : {}),
     },
   }
 }

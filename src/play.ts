@@ -2,6 +2,7 @@ import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes
 import { hiddenQuestions, nextTeamId, roundById } from './game'
 import { withLog } from './log'
 import { newTimer, pauseTimer, startTimer, type Current, type FinalState, type LiveState } from './live'
+import { describeRule, needsTeam, targetTeam } from './rules'
 import { correctPoints, isForAll, wrongPoints } from './special'
 import { chooseOption, startBranch } from './tree'
 import type { Game, Question, Rule, Theme } from './types'
@@ -323,12 +324,19 @@ export function switchRound(s: LiveState, roundId: string): LiveState {
 // Выполнить правило «ЕСЛИ → ТО» (больше его не предлагаем)
 export function runRule(s: LiveState, rule: Rule): LiveState {
   const { then } = rule
-  const opened = then.kind === 'unlock-question' ? unlockQuestion(s, then.target) : then.kind === 'open-round' ? unlockRound(s, then.target) : s
-  return {
-    ...opened,
-    rulesDone: [...(s.rulesDone ?? []), rule.id],
-    shownMedia: then.kind === 'show-media' && then.media ? then.media : s.shownMedia,
+  let next = s
+  if (then.kind === 'unlock-question') next = unlockQuestion(s, then.target)
+  if (then.kind === 'open-round') next = unlockRound(s, then.target)
+  if (then.kind === 'show-media' && then.media) next = { ...s, shownMedia: then.media }
+  if (then.kind === 'show-text' && then.text) next = { ...s, shownText: then.text }
+  // Баллы и ход — команде из условия, лидеру или отстающей (кто это — смотрим сейчас, когда ведущий нажал «Выполнить»)
+  const team = needsTeam(then.kind) ? targetTeam(s.game, rule, s.log) : undefined
+  if (then.kind === 'add-points' && team && then.points) {
+    const note = 'правило: ' + describeRule(s.game, rule, s.log).when
+    next = withLog(withScore(s, team.id, then.points), { kind: 'rule', teamId: team.id, points: then.points, note })
   }
+  if (then.kind === 'give-turn' && team) next = { ...s, turnTeamId: team.id }
+  return { ...next, rulesDone: [...(s.rulesDone ?? []), rule.id] }
 }
 
 // Пропустить правило (больше его не предлагаем)

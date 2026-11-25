@@ -241,7 +241,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // ---- Правила «ЕСЛИ → ТО» ----
   // Пока вопрос открыт, правила ждут; на табло пульт предлагает выполнить их по одному.
-  const pendingRules = current ? [] : readyRules(game, rulesDone, unlockedIds)
+  const pendingRules = current ? [] : readyRules(game, rulesDone, unlockedIds, live.log)
 
   function runRule(rule: Rule) {
     commit(applyRule(live, rule))
@@ -870,7 +870,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
       {/* Правило «ЕСЛИ → ТО» сработало — ведущий решает, выполнить ли его */}
       {pendingRules.slice(0, 1).map((rule) => {
-        const text = describeRule(game, rule)
+        const text = describeRule(game, rule, live.log)
         return (
           <div key={rule.id} role="alert" className="flex flex-wrap items-center gap-3 rounded-xl border-2 border-white bg-cell px-5 py-3">
             <span className="mr-auto">
@@ -886,6 +886,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           </div>
         )
       })}
+
+      {live.shownText && (
+        <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-white px-5 py-3">
+          <span className="mr-auto">В зале во весь экран надпись: «{live.shownText}»</span>
+          <button
+            type="button"
+            onClick={() => commit({ ...live, shownText: null })}
+            className="h-11 rounded-lg bg-white px-5 font-semibold text-black hover:opacity-90"
+          >
+            Убрать из зала
+          </button>
+        </div>
+      )}
 
       {live.shownMedia && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-xl border border-white px-5 py-3">

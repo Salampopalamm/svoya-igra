@@ -30,6 +30,7 @@ export type LiveState = {
   unlockedRoundIds?: string[] // скрытые раунды, которые уже открыли (правилом или ведущий)
   rulesDone?: string[] // правила, которые ведущий уже выполнил или пропустил — больше не предлагаем
   shownMedia?: MediaRef | null // картинка или видео во весь экран зала (действие правила)
+  shownText?: string | null // надпись во весь экран зала (действие правила)
   log?: LogEntry[] // журнал партии: кто, за что и сколько получил (log.ts)
   marks?: Record<string, boolean> // вопрос «для всех команд»: кто ответил верно / неверно (отмечает ведущий; нет отметки — не ответили)
 }
@@ -228,6 +229,7 @@ export function closeSavedQuestion(gameId: string) {
     video: null,
     branch: null,
     shownMedia: null,
+    shownText: null,
     resizeHall: false,
   } satisfies Partial<LiveState>)
 }

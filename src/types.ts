@@ -136,12 +136,24 @@ export type Round = {
 }
 
 // Правило «ЕСЛИ → ТО». Когда условие выполнилось, пульт предлагает ведущему выполнить действие.
-//   when.value: score-reached — сколько баллов (число), round-finished — id раунда, question-played — id вопроса
-//   then.target: open-round — id раунда, unlock-question — id вопроса, show-media — id файла (сам файл — then.media)
+//   when.value: score-reached — сколько баллов, wrong-streak — сколько ошибок подряд, behind — на сколько отстаёт (числа);
+//               round-finished — id раунда, category-played — id категории, question-played — id вопроса
+//   then.target: open-round — id раунда, unlock-question — id вопроса, show-media — id файла (сам файл — then.media);
+//               add-points и give-turn — кому: 'trigger' (команда из условия), 'leader' (лидер), 'last' (отстающая)
+//   then.points — сколько баллов дать (add-points; минус — отнять), then.text — надпись в зале (show-text)
 export type Rule = {
   id: string
-  when: { kind: 'score-reached' | 'round-finished' | 'question-played'; value: string | number }
-  then: { kind: 'open-round' | 'unlock-question' | 'add-points' | 'show-media'; target: string; media?: MediaRef }
+  when: {
+    kind: 'score-reached' | 'round-finished' | 'question-played' | 'category-played' | 'wrong-streak' | 'behind'
+    value: string | number
+  }
+  then: {
+    kind: 'open-round' | 'unlock-question' | 'add-points' | 'show-media' | 'give-turn' | 'show-text'
+    target: string
+    media?: MediaRef
+    points?: number
+    text?: string
+  }
 }
 
 export type Game = {

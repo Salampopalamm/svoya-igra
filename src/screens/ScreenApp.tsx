@@ -215,6 +215,12 @@ export default function ScreenApp() {
       }
     >
       <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
+        {/* Правило «ЕСЛИ → ТО» показало надпись: во весь экран поверх табло, пока ведущий не уберёт */}
+        {live.shownText && (
+          <div key={live.shownText} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-16 text-center">
+            <p className="font-display text-[min(7rem,9vw)] leading-tight break-words whitespace-pre-line text-white">{live.shownText}</p>
+          </div>
+        )}
         {/* Правило «ЕСЛИ → ТО» показало картинку или видео: во весь экран поверх табло, пока ведущий не уберёт */}
         {live.shownMedia && (
           <div key={live.shownMedia.id} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-10">
