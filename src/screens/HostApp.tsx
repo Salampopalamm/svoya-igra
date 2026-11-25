@@ -7,16 +7,7 @@ import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
 import HowToRun from '../components/HowToRun'
 import FinalHost, { FinalAnswers } from '../components/FinalHost'
-import {
-  betsReady,
-  FINAL_TIMER_SEC,
-  finalStateOf,
-  participants,
-  remainingThemes,
-  removeTheme,
-  remover,
-  withFinalScores,
-} from '../final'
+import { finalStateOf, remover } from '../final'
 import QuestionView from '../components/QuestionView'
 import Scoreboard from '../components/Scoreboard'
 import {
@@ -27,11 +18,8 @@ import {
   loadRehearsal,
   loadState,
   newTimer,
-  pauseTimer,
   saveRehearsal,
   saveState,
-  startTimer,
-  type Current,
   type LiveState,
   type HallAction,
   type HallStatus,
@@ -42,102 +30,43 @@ import { playTimeUp } from '../sounds'
 import { updateStoredGame } from '../db'
 import { hiddenQuestions, mergeProgress, nextTeamId, rehearsalCells, roundById, updateQuestion } from '../game'
 import { setContentPlace } from '../placement'
-import { chooseOption, startBranch } from '../tree'
 import { describeRule, readyRules } from '../rules'
 import { BranchBody, BranchControls } from '../components/BranchHost'
 import type { Game, PlaceTarget, Placement, Question, Rule, Theme } from '../types'
 import { clampSize, FONTS, hallSizes, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { usePreload } from '../preload'
-
-// Свежая партия: игра из хранилища, всё по нулям
-function freshState(game: Game): LiveState {
-  return {
-    game,
-    roundId: game.rounds[0]?.id ?? null,
-    current: null,
-    slideIndex: 0,
-    showAnswer: false,
-    answeringTeamId: null,
-    turnTeamId: game.teams[0]?.id ?? null,
-    triedTeamIds: [],
-    screenHidden: false,
-    timer: null,
-    video: null,
-  }
-}
+import {
+  answerCorrect,
+  answerWrong,
+  chooseBranch,
+  finalMark as finalMarkIn,
+  finalRemoveTheme as finalRemoveThemeIn,
+  finalReveal as finalRevealIn,
+  finalSetBet as finalSetBetIn,
+  finalShowQuestion as finalShowQuestionIn,
+  freshState,
+  goToSlide as goToSlideIn,
+  openCell as openCellIn,
+  openedQuestion,
+  roundLocked as isRoundLocked,
+  runRule as applyRule,
+  selectAnswering,
+  setTurn as setTurnIn,
+  showAnswer as showAnswerIn,
+  skipRule as skipRuleIn,
+  switchRound as switchRoundIn,
+  toggleTimer as toggleTimerIn,
+  unlockQuestion,
+  unlockRound,
+  viewPlayedCell,
+  withClosed,
+  withScore,
+  withTeamScore,
+  type CellRef,
+} from '../play'
 
 const HISTORY_LIMIT = 50
-const DEFAULT_TIMER_SEC = 30 // клавиша T на вопросе без таймера
-
-type CellRef = { categoryId: string; questionId: string }
-
-// ---- Чистые функции: берут состояние и возвращают новое ----
-
-function withPlayed(s: LiveState, cell: Current): LiveState {
-  if (!cell) return s
-  return {
-    ...s,
-    game: {
-      ...s.game,
-      rounds: s.game.rounds.map((r) => ({
-        ...r,
-        categories: r.categories.map((c) =>
-          c.id !== cell.categoryId
-            ? c
-            : { ...c, questions: c.questions.map((q) => (q.id === cell.questionId ? { ...q, played: true } : q)) },
-        ),
-      })),
-    },
-  }
-}
-
-function withScore(s: LiveState, teamId: string, delta: number): LiveState {
-  return withTeamScore(s, teamId, (score) => score + delta)
-}
-
-function withTeamScore(s: LiveState, teamId: string, change: (score: number) => number): LiveState {
-  return {
-    ...s,
-    game: { ...s.game, teams: s.game.teams.map((t) => (t.id === teamId ? { ...t, score: change(t.score) } : t)) },
-  }
-}
-
-// Закрыть вопрос: ячейка сыграна, ход переходит к следующей команде по кругу
-// (если вопрос открывали только посмотреть — ход остаётся у той же команды)
-function withClosed(s: LiveState): LiveState {
-  return {
-    ...withPlayed(s, s.current),
-    current: null,
-    slideIndex: 0,
-    showAnswer: false,
-    answeringTeamId: null,
-    triedTeamIds: [],
-    viewOnly: false,
-    turnTeamId: s.viewOnly ? s.turnTeamId : nextTeamId(s.game, s.turnTeamId),
-    timer: null,
-    video: null,
-    branch: null,
-  }
-}
-
-// Таймер вопроса: закреплённое на пульте время (📌) важнее времени из редактора
-function questionTimer(question: Question | undefined, theme: Theme) {
-  return newTimer(theme.pinnedTimerSec ?? question?.timerSec)
-}
-
-// Только что открытый вопрос: первый слайд, ответ скрыт, таймер ждёт запуска, ветвящийся — на первом шаге
-function openedQuestion(question: Question | undefined, theme: Theme): Partial<LiveState> {
-  return {
-    slideIndex: 0,
-    showAnswer: false,
-    triedTeamIds: [],
-    viewOnly: false,
-    timer: questionTimer(question, theme),
-    video: null,
-    branch: question?.tree ? startBranch(question.tree) : null,
-  }
-}
 
 // Пульт ведущего: управляет игрой и передаёт состояние экрану зала.
 export default function HostApp({ initialGame }: { initialGame: Game }) {
@@ -178,7 +107,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const { game, current, slideIndex, showAnswer, answeringTeamId, turnTeamId, triedTeamIds, screenHidden } = live
   const unlockedIds = live.unlockedIds ?? []
-  const unlockedRoundIds = live.unlockedRoundIds ?? []
   const rulesDone = live.rulesDone ?? []
   const round = roundById(game, live.roundId)
   // Финальный раунд идёт по своим шагам (final.ts); в обычном раунде final = null
@@ -227,6 +155,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Действие, которое можно отменить через Ctrl+Z
   function commit(next: LiveState) {
+    if (next === live) return // действие сейчас невозможно (функции play.ts вернули то же состояние)
     setHistory((h) => [...h.slice(-(HISTORY_LIMIT - 1)), live])
     setLive(next)
   }
@@ -247,7 +176,6 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const currentCell = find(current)
   const previewCell = find(preview)
-  const value = currentCell.question?.value ?? 0
 
   // Клик по ячейке: в режиме предпросмотра — только на пульте, иначе — играем вопрос
   function handleCellClick(categoryId: string, questionId: string) {
@@ -262,8 +190,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   function openCell(categoryId: string, questionId: string) {
     // В репетиции «Следующий вопрос» продолжит с этой ячейки
     if (live.rehearsal) setLastCell(cells.findIndex((c) => c.questionId === questionId))
-    const { question } = find({ categoryId, questionId })
-    commit({ ...live, ...openedQuestion(question, game.theme), current: { categoryId, questionId }, answeringTeamId: turnTeamId })
+    commit(openCellIn(live, { categoryId, questionId }))
   }
 
   // Клик по сыгранной (красной) ячейке: вопрос открывается только посмотреть — без «Верно / Неверно»
@@ -272,35 +199,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       setPreview({ categoryId, questionId })
       return
     }
-    const { question } = find({ categoryId, questionId })
-    commit({
-      ...live,
-      ...openedQuestion(question, game.theme),
-      current: { categoryId, questionId },
-      answeringTeamId: null,
-      viewOnly: true,
-    })
+    commit(viewPlayedCell(live, { categoryId, questionId }))
   }
 
   // Ветвящийся вопрос: ведущий нажал вариант. Баллы — сразу или одной суммой в конце ветки, следующий шаг.
   function chooseBranchOption(option: number) {
-    const tree = currentCell.question?.tree
-    if (!tree || !live.branch || live.branch.done || !answeringTeamId || live.viewOnly) return
-    const node = tree.nodes.find((n) => n.id === live.branch!.nodeId)
-    const points = node?.options[option]?.points ?? 0
-    const branch = chooseOption(tree, live.branch, option)
-    const gained = tree.scoring === 'per-step' ? points : branch.done ? branch.earned : 0
-    // Вариант может открыть скрытый вопрос на табло
-    const unlock = node?.options[option]?.unlockQuestionId
-    const unlockable = unlock && hiddenQuestions(game).some((h) => h.id === unlock) && !unlockedIds.includes(unlock)
-    commit({
-      ...withScore(live, answeringTeamId, gained),
-      unlockedIds: unlockable ? [...unlockedIds, unlock] : unlockedIds,
-      branch,
-      showAnswer: false,
-      timer: questionTimer(currentCell.question, game.theme),
-      video: null,
-    })
+    commit(chooseBranch(live, option))
   }
 
   // Ведущий нажал скрытую ячейку: в предпросмотре — посмотреть её, иначе — открыть (с подтверждением)
@@ -311,7 +215,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     }
     const label = hiddenQuestions(game).find((h) => h.id === questionId)?.label ?? 'скрытый вопрос'
     if (!window.confirm(`Открыть скрытый вопрос «${label}»? В зале он появится на табло.`)) return
-    commit({ ...live, unlockedIds: [...unlockedIds, questionId] })
+    commit(unlockQuestion(live, questionId))
   }
 
   function closeQuestion() {
@@ -323,105 +227,65 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const pendingRules = current ? [] : readyRules(game, rulesDone, unlockedIds)
 
   function runRule(rule: Rule) {
-    const { then } = rule
-    commit({
-      ...live,
-      rulesDone: [...rulesDone, rule.id],
-      unlockedIds: then.kind === 'unlock-question' && !unlockedIds.includes(then.target) ? [...unlockedIds, then.target] : unlockedIds,
-      unlockedRoundIds:
-        then.kind === 'open-round' && !unlockedRoundIds.includes(then.target) ? [...unlockedRoundIds, then.target] : unlockedRoundIds,
-      shownMedia: then.kind === 'show-media' && then.media ? then.media : live.shownMedia,
-    })
+    commit(applyRule(live, rule))
   }
 
   function skipRule(rule: Rule) {
-    commit({ ...live, rulesDone: [...rulesDone, rule.id] })
+    commit(skipRuleIn(live, rule))
   }
 
   // Скрытый раунд закрыт, пока его не откроет правило или ведущий
-  const roundLocked = (r: { id: string; hidden?: boolean }) => !!r.hidden && !unlockedRoundIds.includes(r.id)
+  const roundLocked = (r: { id: string; hidden?: boolean }) => isRoundLocked(live, r)
 
   function openHiddenRound(roundId: string, title: string) {
     if (current) return
     if (!window.confirm(`Открыть скрытый раунд «${title}»? После этого на него можно переключиться.`)) return
-    commit({ ...live, unlockedRoundIds: [...unlockedRoundIds, roundId] })
+    commit(unlockRound(live, roundId))
   }
 
   // Перейти к другому раунду (только с табло, не посреди вопроса); отменяется через Ctrl+Z
   function switchRound(roundId: string) {
-    if (current || roundId === round.id) return
-    const target = game.rounds.find((r) => r.id === roundId)
-    if (target && roundLocked(target)) return
-    commit({ ...live, roundId })
+    const next = switchRoundIn(live, roundId)
+    if (next === live) return
+    commit(next)
     setPreview(null)
   }
 
   // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
   function handleCorrect(teamId: string) {
-    if (!currentCell.question || currentCell.question.tree || live.viewOnly || triedTeamIds.includes(teamId)) return
-    commit(withClosed(withScore(live, teamId, value)))
+    commit(answerCorrect(live, teamId))
   }
 
   // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
   function handleWrong(teamId: string) {
-    if (!currentCell.question || currentCell.question.tree || live.viewOnly || triedTeamIds.includes(teamId)) return
-    commit({ ...withScore(live, teamId, -value), answeringTeamId: null, triedTeamIds: [...triedTeamIds, teamId] })
+    commit(answerWrong(live, teamId))
   }
 
   // ---- Финал ----
 
   // Команда убрала тему (ведущий нажал её на пульте)
   function finalRemoveTheme(categoryId: string) {
-    if (final) commit({ ...live, final: removeTheme(round, final, categoryId) })
+    commit(finalRemoveThemeIn(live, categoryId))
   }
 
   // Ставку вписывают по цифре — каждую не запоминаем для Ctrl+Z
   function finalSetBet(teamId: string, bet: number | undefined) {
-    setLive((s) => {
-      const f = finalStateOf(s.final, roundById(s.game, s.roundId))
-      const bets = { ...f.bets }
-      if (bet === undefined) delete bets[teamId]
-      else bets[teamId] = bet
-      return { ...s, final: { ...f, bets } }
-    })
+    setLive((s) => finalSetBetIn(s, teamId, bet))
   }
 
-  // Ставки сделаны — открываем вопрос оставшейся темы. Отвечают все играющие сразу (на бумажках).
+  // Ставки сделаны — открываем вопрос оставшейся темы
   function finalShowQuestion() {
-    if (!final || !betsReady(game, final)) return
-    const theme = remainingThemes(round, final)[0]
-    if (!theme) return
-    const bets = Object.fromEntries(participants(game, final).map((t) => [t.id, final.bets[t.id]]))
-    commit({
-      ...live,
-      final: { ...final, bets, correct: {}, phase: 'question' },
-      current: { categoryId: theme.category.id, questionId: theme.question.id },
-      slideIndex: 0,
-      showAnswer: false,
-      answeringTeamId: null,
-      triedTeamIds: [],
-      timer: newTimer(theme.question.timerSec ?? FINAL_TIMER_SEC),
-      video: null,
-    })
+    commit(finalShowQuestionIn(live))
   }
 
   // Ведущий отметил ответ команды: верно / неверно
   function finalMark(teamId: string, correct: boolean) {
-    if (final) commit({ ...live, final: { ...final, correct: { ...final.correct, [teamId]: correct } } })
+    commit(finalMarkIn(live, teamId, correct))
   }
 
   // Итоги: счёт по ставкам, вопрос сыгран, зал показывает таблицу и ответ
   function finalReveal() {
-    if (!final) return
-    commit({
-      ...withPlayed({ ...live, game: withFinalScores(game, final) }, current),
-      final: { ...final, phase: 'results' },
-      current: null,
-      slideIndex: 0,
-      showAnswer: false,
-      timer: null,
-      video: null,
-    })
+    commit(finalRevealIn(live))
   }
 
   // Сигнал «время вышло» можно выключить
@@ -441,12 +305,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Листать слайды открытого вопроса: зал сразу показывает выбранный слайд
   function goToSlide(delta: number) {
-    const count = currentCell.question?.slides.length ?? 1
-    setLive((s) => {
-      const slideIndex = Math.min(Math.max(s.slideIndex + delta, 0), count - 1)
-      // Ушли со слайда с видео — оно останавливается
-      return slideIndex === s.slideIndex ? s : { ...s, slideIndex, video: null }
-    })
+    setLive((s) => goToSlideIn(s, delta))
   }
 
   // Команда видео в зале: играть / стоять, с какой секунды, громкость. Не отменяется через Ctrl+Z.
@@ -467,17 +326,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Ответ в зале — таймер больше не нужен, останавливаем
   function showAnswerInHall() {
-    commit({ ...live, showAnswer: true, timer: live.timer && pauseTimer(live.timer) })
+    commit(showAnswerIn(live))
   }
 
   // Таймер: запустить / пауза (клавиша T). Не отменяется через Ctrl+Z — это не ход игры.
   // Если таймера у вопроса нет — запускаем на стандартное время.
   function toggleTimer() {
-    setLive((s) => {
-      const timer = s.timer ?? newTimer(s.game.theme.pinnedTimerSec ?? DEFAULT_TIMER_SEC)
-      if (!s.current || !timer) return s
-      return { ...s, timer: timer.endsAt === null ? startTimer(timer) : pauseTimer(timer) }
-    })
+    setLive((s) => toggleTimerIn(s))
   }
 
   // Ведущий выбрал время таймера (null — убрать таймер из зала). Таймер встаёт на начало и ждёт запуска.
@@ -497,13 +352,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Кто отвечает сейчас (основная команда или перехват). Ошибившимся командам отвечать нельзя.
   function selectTeam(teamId: string | null) {
-    if (live.viewOnly || (teamId && triedTeamIds.includes(teamId))) return
-    setLive((s) => ({ ...s, answeringTeamId: teamId }))
+    setLive((s) => selectAnswering(s, teamId))
   }
 
   // Ведущий передал ход другой команде — отменяется через Ctrl+Z
   function setTurn(teamId: string) {
-    if (teamId !== turnTeamId) commit({ ...live, turnTeamId: teamId })
+    commit(setTurnIn(live, teamId))
   }
 
   // Номер команды (клавиша или кружок на счёте): на табло — передать ход, в вопросе — кто отвечает
@@ -661,8 +515,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       // Пока ведущий вписывает счёт или жмёт клавиши в плеере — горячие клавиши молчат
-      const target = e.target as HTMLElement | null
-      if (target?.closest('input, textarea, select, audio, video')) return
+      const target = e.target
+      if (target instanceof Element && target.closest('input, textarea, select, audio, video')) return
 
       // Ctrl+Z — отменить последнее действие
       if (e.ctrlKey && e.code === 'KeyZ') {
