@@ -3,11 +3,13 @@ import {
   deleteGame,
   deleteMediaFiles,
   deleteMediaIfUnused,
+  findBigImages,
   findUnusedMedia,
   listGames,
   mediaBytes,
   protectStorage,
   saveGame,
+  shrinkStoredImages,
   storageUsed,
 } from '../db'
 import { allMediaIds, copyGame } from '../game'
@@ -35,9 +37,12 @@ export default function LibraryApp() {
   }, [])
   // Ненужные файлы (ни в одной игре и ни в черновике) — можно убрать одной кнопкой
   const [unused, setUnused] = useState<{ ids: string[]; bytes: number } | null>(null)
+  // Большие фото, добавленные до того, как программа стала их уменьшать, — тоже одной кнопкой
+  const [bigImages, setBigImages] = useState<{ ids: string[]; bytes: number } | null>(null)
   useEffect(() => {
     void storageUsed().then(setUsed)
     void findUnusedMedia().then(setUnused)
+    void findBigImages().then(setBigImages)
   }, [games])
 
   async function removeUnused() {
@@ -47,6 +52,25 @@ export default function LibraryApp() {
     await deleteMediaFiles(unused.ids)
     setMessage({ text: `Убрано: ${formatSize(unused.bytes)}.` })
     reload()
+  }
+
+  async function shrinkBig() {
+    if (!bigImages?.ids.length) return
+    setMessage(null)
+    try {
+      const saved = await shrinkStoredImages(bigImages.ids, (done, total) => setBusy(`Уменьшаю фото: ${done} из ${total}…`))
+      setMessage({
+        text:
+          saved > 0
+            ? `Фото уменьшены, освободилось ${formatSize(saved)}. На экране разницы не видно.`
+            : 'Эти фото уже сжаты — уменьшать нечего.',
+      })
+    } catch (e) {
+      setMessage({ text: `Не получилось уменьшить фото: ${e instanceof Error ? e.message : String(e)}`, error: true })
+    } finally {
+      setBusy(null)
+      reload()
+    }
   }
   const [exported, setExported] = useState(exportedAt) // когда какую игру сохраняли файлом
 
@@ -255,6 +279,17 @@ export default function LibraryApp() {
             className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell"
           >
             Убрать ненужные файлы · {unused.ids.length} · {formatSize(unused.bytes)}
+          </button>
+        )}
+        {bigImages && bigImages.ids.length > 0 && (
+          <button
+            type="button"
+            onClick={shrinkBig}
+            disabled={!!busy}
+            title="Фото уменьшатся до 2560 точек по длинной стороне: на проекторе разницы не видно, а игра станет легче"
+            className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell disabled:opacity-50"
+          >
+            Уменьшить большие фото · {bigImages.ids.length} · {formatSize(bigImages.bytes)}
           </button>
         )}
       </section>

@@ -35,6 +35,7 @@ import { BranchBody, BranchControls } from '../components/BranchHost'
 import type { Game, PlaceTarget, Placement, Question, Rule, Theme } from '../types'
 import { clampSize, FONTS, hallSizes, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
+import { hostKey, typingInField } from '../hostKeys'
 import { usePreload } from '../preload'
 import {
   answerCorrect,
@@ -514,59 +515,47 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Горячие клавиши
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      // Пока ведущий вписывает счёт или жмёт клавиши в плеере — горячие клавиши молчат
-      const target = e.target
-      if (target instanceof Element && target.closest('input, textarea, select, audio, video')) return
-
-      // Ctrl+Z — отменить последнее действие
-      if (e.ctrlKey && e.code === 'KeyZ') {
-        e.preventDefault()
-        undo()
-        return
-      }
-      // H — скрыть / показать экран зала
-      if (e.code === 'KeyH') toggleScreenHidden()
-      // Esc — закрыть настройки, предпросмотр или вопрос
-      if (e.code === 'Escape') {
-        if (howToOpen) setHowToOpen(false)
-        else if (settingsOpen) setSettingsOpen(false)
-        else if (preview) setPreview(null)
-        else if (current && !isFinal) closeQuestion() // вопрос финала закрывается только итогами
-      }
-      // P — режим предпросмотра (когда вопрос не открыт; в финале табло нет)
-      if (e.code === 'KeyP' && !current && !isFinal) togglePreviewMode()
-
-      // 1–9 и 0 — команда по номеру (0 = десятая): на табло — чей ход, в вопросе — кто отвечает
-      const digit = /^(Digit|Numpad)(\d)$/.exec(e.code)
-      if (digit && !isFinal) {
-        const index = digit[2] === '0' ? 9 : Number(digit[2]) - 1
-        const team = game.teams[index]
-        if (team) pickTeam(team.id)
-      }
-
-      if (!current) return
-
-      // ← / → — предыдущий / следующий слайд вопроса
-      if (e.code === 'ArrowRight') goToSlide(1)
-      if (e.code === 'ArrowLeft') goToSlide(-1)
-
-      // T — запустить / остановить таймер вопроса
-      if (e.code === 'KeyT') toggleTimer()
-
-      // Пробел — показать ответ в зале
-      if (e.code === 'Space') {
-        e.preventDefault()
-        if (!showAnswer && !isFinal) showAnswerInHall() // в финале ответ — вместе с итогами
-      }
-      // + / − — «Верно» / «Неверно» для выбранной команды (в дереве по правильности — варианты «Верно / Неверно»)
-      if (answeringTeamId && currentCell.question?.tree) {
-        if (currentCell.question.tree.branchBy === 'correctness') {
-          if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') chooseBranchOption(0)
-          if (e.key === '-' || e.code === 'NumpadSubtract') chooseBranchOption(1)
+      if (typingInField(e.target)) return
+      const command = hostKey(e, { questionOpen: !!current, isFinal }) // какая клавиша что значит — hostKeys.ts
+      if (!command) return
+      // Пробел не должен нажимать кнопку под курсором, Ctrl+Z — отменять в браузере
+      if (command.kind === 'undo' || command.kind === 'answer') e.preventDefault()
+      const tree = currentCell.question?.tree
+      switch (command.kind) {
+        case 'undo':
+          return undo()
+        case 'toggle-screen':
+          return toggleScreenHidden()
+        case 'escape':
+          if (howToOpen) setHowToOpen(false)
+          else if (settingsOpen) setSettingsOpen(false)
+          else if (preview) setPreview(null)
+          else if (current && !isFinal) closeQuestion() // вопрос финала закрывается только итогами
+          return
+        case 'preview-mode':
+          return togglePreviewMode()
+        case 'team': {
+          // на табло — чей ход, в вопросе — кто отвечает
+          const team = game.teams[command.index]
+          if (team) pickTeam(team.id)
+          return
         }
-      } else if (answeringTeamId) {
-        if (e.key === '+' || e.key === '=' || e.code === 'NumpadAdd') handleCorrect(answeringTeamId)
-        if (e.key === '-' || e.code === 'NumpadSubtract') handleWrong(answeringTeamId)
+        case 'slide':
+          return goToSlide(command.delta)
+        case 'timer':
+          return toggleTimer()
+        case 'answer':
+          if (!showAnswer && !isFinal) showAnswerInHall() // в финале ответ — вместе с итогами
+          return
+        // + / − — «Верно» / «Неверно» для отвечающей команды; в дереве по правильности — варианты «Верно / Неверно»
+        case 'correct':
+        case 'wrong':
+          if (!answeringTeamId) return
+          if (tree) {
+            if (tree.branchBy === 'correctness') chooseBranchOption(command.kind === 'correct' ? 0 : 1)
+          } else if (command.kind === 'correct') handleCorrect(answeringTeamId)
+          else handleWrong(answeringTeamId)
+          return
       }
     }
     window.addEventListener('keydown', onKey)

@@ -1,14 +1,40 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useState, type ComponentType, type ReactNode } from 'react'
 import ErrorBoundary, { ErrorScreen } from './components/ErrorBoundary'
 import { getGame } from './db'
 import { CHANNEL, closeSavedQuestion, type Message } from './live'
-import EditorApp from './screens/EditorApp'
 import HostApp from './screens/HostApp'
 import LibraryApp from './screens/LibraryApp'
 import ScreenApp from './screens/ScreenApp'
-import TeamsApp from './screens/TeamsApp'
-import WizardApp from './screens/WizardApp'
+import { APP_KEY } from './site'
 import type { Game } from './types'
+
+// Редактор, команды и мастер грузятся, только когда их открывают, — сайт открывается быстрее.
+// Пульт и зал — сразу: они нужны во время игры, когда интернет может пропасть.
+const EditorApp = lazyScreen(() => import('./screens/EditorApp'))
+const TeamsApp = lazyScreen(() => import('./screens/TeamsApp'))
+const WizardApp = lazyScreen(() => import('./screens/WizardApp'))
+
+// Если сайт обновили, пока вкладка была открыта, старых частей сайта на сервере уже нет —
+// тогда один раз перезагружаем страницу, и она возьмёт новые. Не помогло — покажем ошибку.
+function lazyScreen<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
+  const key = `${APP_KEY}:reloaded-for-update`
+  return lazy(() =>
+    load().then(
+      (module) => {
+        sessionStorage.removeItem(key)
+        return module
+      },
+      (error: unknown) => {
+        if (!sessionStorage.getItem(key)) {
+          sessionStorage.setItem(key, '1')
+          window.location.reload()
+          return new Promise<never>(() => {}) // ждём перезагрузки
+        }
+        throw error
+      },
+    ),
+  )
+}
 
 // Адреса внутри приложения (часть после #):
 //   #/              — «Мои игры»
@@ -45,7 +71,9 @@ export default function App() {
         )
       }
     >
-      <Page hash={hash} />
+      <Suspense fallback={<Placeholder text="Загрузка…" />}>
+        <Page hash={hash} />
+      </Suspense>
     </ErrorBoundary>
   )
 }

@@ -3,7 +3,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import { demoGame } from './data/demoGame'
 import { demoMediaFiles } from './data/demoMedia'
 import { repairGame } from './repairGame'
-import { shrinkImage } from './shrinkImage'
+import { BIG_FILE, shrinkImage } from './shrinkImage'
 import { DRAFT_KEY } from './wizard'
 import type { Content, Game, MediaFile, MediaRef, MediaType, Question } from './types'
 
@@ -188,6 +188,57 @@ export async function findUnusedMedia(): Promise<{ ids: string[]; bytes: number 
 
 export function deleteMediaFiles(ids: string[]) {
   return db.media.bulkDelete(ids)
+}
+
+// Фото, которые кнопка уже уменьшала (или пробовала), — чтобы не предлагать их снова
+const SHRINK_TRIED_KEY = `${APP_KEY}:shrink-tried`
+
+function shrinkTried(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(SHRINK_TRIED_KEY) ?? '[]')
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+// Большие фото, добавленные до того, как программа стала их уменьшать (25.11.2026), — их можно уменьшить кнопкой
+export async function findBigImages(): Promise<{ ids: string[]; bytes: number }> {
+  const tried = new Set(shrinkTried())
+  const ids: string[] = []
+  let bytes = 0
+  await db.media.each((file) => {
+    if (file.type !== 'image' || !file.blob || file.blob.size <= BIG_FILE || tried.has(file.id)) return
+    ids.push(file.id)
+    bytes += file.blob.size
+  })
+  return { ids, bytes }
+}
+
+// Уменьшить сохранённые фото (shrinkImage.ts). Ссылки в играх не меняются — id файла тот же.
+// Возвращает, сколько байт освободилось. onProgress(готово, всего) — для строки «Уменьшаю фото: 3 из 12».
+export async function shrinkStoredImages(ids: string[], onProgress?: (done: number, total: number) => void) {
+  let saved = 0
+  const tried: string[] = []
+  for (const [i, id] of ids.entries()) {
+    onProgress?.(i, ids.length)
+    const stored = await db.media.get(id)
+    if (!stored || stored.type !== 'image') continue
+    const original = new File([stored.blob], stored.name, { type: stored.blob.type })
+    const smaller = await shrinkImage(original)
+    // Больше не предлагаем: повторное сжатие только портит картинку
+    tried.push(id)
+    if (smaller === original) continue // уменьшать не нужно или не вышло — оставляем как было
+    await db.media.put({ ...stored, name: smaller.name, blob: smaller })
+    saved += original.size - smaller.size
+  }
+  onProgress?.(ids.length, ids.length)
+  try {
+    if (tried.length) localStorage.setItem(SHRINK_TRIED_KEY, JSON.stringify([...shrinkTried(), ...tried]))
+  } catch {
+    // хранилище недоступно — кнопка просто предложит их ещё раз
+  }
+  return saved
 }
 
 // Сколько весят все файлы игры, байт (столько примерно и будет файл .zip)
