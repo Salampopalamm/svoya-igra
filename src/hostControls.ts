@@ -7,6 +7,7 @@ import { useState } from 'react'
 export type ControlId =
   | 'preview'
   | 'undo'
+  | 'log'
   | 'teams'
   | 'reset'
   | 'rehearsal'
@@ -24,7 +25,7 @@ export type ControlId =
   | 'timer-sound'
 
 export const CONTROL_GROUPS: { title: string; ids: ControlId[] }[] = [
-  { title: 'Игра', ids: ['preview', 'undo', 'teams', 'rehearsal', 'reset'] },
+  { title: 'Игра', ids: ['preview', 'undo', 'log', 'teams', 'rehearsal', 'reset'] },
   { title: 'Экран зала', ids: ['open-screen', 'hide-screen', 'hall-mouse', 'how-to'] },
   { title: 'Оформление зала', ids: ['tone', 'font', 'grayscale', 'sizes', 'hall-resize'] },
   { title: 'Команды в зале', ids: ['team-view', 'photos'] },
@@ -35,6 +36,7 @@ export const CONTROL_GROUPS: { title: string; ids: ControlId[] }[] = [
 export const CONTROL_NAMES: Record<ControlId, string> = {
   preview: 'Предпросмотр',
   undo: 'Отменить',
+  log: 'Журнал партии',
   teams: 'Команды и игроки',
   reset: 'Начать заново',
   rehearsal: 'Репетиция',
@@ -53,7 +55,7 @@ export const CONTROL_NAMES: Record<ControlId, string> = {
 }
 
 // Без настроек на панели — самое нужное во время игры
-const DEFAULT_PINNED: ControlId[] = ['preview', 'hide-screen', 'undo', 'open-screen', 'how-to']
+const DEFAULT_PINNED: ControlId[] = ['preview', 'hide-screen', 'undo', 'log', 'open-screen', 'how-to']
 
 const STORAGE_KEY = `${APP_KEY}:host-pinned`
 

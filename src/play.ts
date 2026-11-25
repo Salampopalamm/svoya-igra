@@ -1,5 +1,6 @@
 import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes, removeTheme, withFinalScores } from './final'
 import { hiddenQuestions, nextTeamId, roundById } from './game'
+import { withLog } from './log'
 import { newTimer, pauseTimer, startTimer, type Current, type FinalState, type LiveState } from './live'
 import { chooseOption, startBranch } from './tree'
 import type { Game, Question, Rule, Theme } from './types'
@@ -42,6 +43,19 @@ export function cellQuestion(s: LiveState, cell: CellRef | null): Question | und
 // Открытый сейчас вопрос
 export const openQuestion = (s: LiveState) => cellQuestion(s, s.current)
 
+// Подпись ячейки для журнала: «География · 300»
+export function cellLabel(s: LiveState, cell: CellRef | null): string | undefined {
+  if (!cell) return undefined
+  const category = roundById(s.game, s.roundId).categories.find((c) => c.id === cell.categoryId)
+  const question = category?.questions.find((q) => q.id === cell.questionId)
+  return category && question ? `${category.title} · ${question.value}` : undefined
+}
+
+// Запись журнала об открытом вопросе
+function aboutCurrent(s: LiveState) {
+  return { questionId: s.current?.questionId, where: cellLabel(s, s.current) }
+}
+
 // Ход финала, если на табло финальный раунд (иначе null)
 export function finalOf(s: LiveState): FinalState | null {
   const round = roundById(s.game, s.roundId)
@@ -68,7 +82,19 @@ export function withPlayed(s: LiveState, cell: Current): LiveState {
   }
 }
 
-// Ручная правка счёта: прибавить (или отнять) баллы
+// Ведущий поправил счёт сам: кнопки ± или вписал счёт целиком (в журнал — как поправку)
+export function adjustScore(s: LiveState, teamId: string, delta: number): LiveState {
+  if (!delta) return s
+  return withLog(withScore(s, teamId, delta), { kind: 'manual', teamId, points: delta })
+}
+
+export function setScore(s: LiveState, teamId: string, score: number): LiveState {
+  const team = s.game.teams.find((t) => t.id === teamId)
+  if (!team || team.score === score) return s
+  return withLog(withTeamScore(s, teamId, () => score), { kind: 'manual', teamId, points: score - team.score, note: `вписан счёт ${score}` })
+}
+
+// Прибавить (или отнять) баллы — без записи в журнал (запись делает тот, кто знает причину)
 export function withScore(s: LiveState, teamId: string, delta: number): LiveState {
   return withTeamScore(s, teamId, (score) => score + delta)
 }
@@ -140,14 +166,26 @@ function canAnswer(s: LiveState, teamId: string): Question | null {
 // Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
 export function answerCorrect(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
-  return question ? withClosed(withScore(s, teamId, question.value)) : s
+  if (!question) return s
+  const points = question.value
+  return withClosed(withLog(withScore(s, teamId, points), { kind: 'correct', teamId, points, ...aboutCurrent(s) }))
+}
+
+// Ведущий закрыл вопрос сам — значит, верного ответа не было (верный ответ закрывает вопрос сразу)
+export function closeQuestion(s: LiveState): LiveState {
+  if (!s.current) return s
+  const question = openQuestion(s)
+  const nobody = !s.viewOnly && !question?.tree && !finalOf(s)
+  return withClosed(nobody ? withLog(s, { kind: 'nobody', points: 0, ...aboutCurrent(s) }) : s)
 }
 
 // Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
 export function answerWrong(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
-  return { ...withScore(s, teamId, -question.value), answeringTeamId: null, triedTeamIds: [...s.triedTeamIds, teamId] }
+  const points = -question.value
+  const scored = withLog(withScore(s, teamId, points), { kind: 'wrong', teamId, points, ...aboutCurrent(s) })
+  return { ...scored, answeringTeamId: null, triedTeamIds: [...s.triedTeamIds, teamId] }
 }
 
 // Кто отвечает сейчас (основная команда или перехват; null — никто). Ошибившимся командам отвечать нельзя.
@@ -174,8 +212,17 @@ export function chooseBranch(s: LiveState, option: number): LiveState {
   const unlockedIds = s.unlockedIds ?? []
   const unlock = node?.options[option]?.unlockQuestionId
   const unlockable = unlock && hiddenQuestions(s.game).some((h) => h.id === unlock) && !unlockedIds.includes(unlock)
+  const label = node?.options[option]?.label ?? ''
+  const note = tree.scoring === 'at-end' && !branch.done ? `${label} (баллы — в конце ветки)` : label
+  const scored = withLog(withScore(s, s.answeringTeamId, gained), {
+    kind: 'branch',
+    teamId: s.answeringTeamId,
+    points: gained,
+    note,
+    ...aboutCurrent(s),
+  })
   return {
-    ...withScore(s, s.answeringTeamId, gained),
+    ...scored,
     unlockedIds: unlockable ? [...unlockedIds, unlock] : unlockedIds,
     branch,
     showAnswer: false,
@@ -296,8 +343,17 @@ export function finalMark(s: LiveState, teamId: string, correct: boolean): LiveS
 export function finalReveal(s: LiveState): LiveState {
   const final = finalOf(s)
   if (!final) return s
+  const where = `Финал · ${roundById(s.game, s.roundId).categories.find((c) => c.id === s.current?.categoryId)?.title ?? ''}`
+  const entries = Object.entries(final.bets).map(([teamId, bet]) => ({
+    kind: 'final' as const,
+    teamId,
+    points: final.correct[teamId] ? bet : -bet,
+    questionId: s.current?.questionId,
+    where,
+    note: `ставка ${bet}, ${final.correct[teamId] ? 'верно' : 'неверно'}`,
+  }))
   return {
-    ...withPlayed({ ...s, game: withFinalScores(s.game, final) }, s.current),
+    ...withPlayed(withLog({ ...s, game: withFinalScores(s.game, final) }, ...entries), s.current),
     final: { ...final, phase: 'results' },
     current: null,
     slideIndex: 0,

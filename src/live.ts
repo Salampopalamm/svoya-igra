@@ -1,4 +1,5 @@
 import { APP_KEY } from './site'
+import type { LogEntry } from './log'
 import type { BranchState } from './tree'
 import type { Game, HallSizes, MediaRef, PlaceTarget, Placement } from './types'
 
@@ -29,6 +30,7 @@ export type LiveState = {
   unlockedRoundIds?: string[] // скрытые раунды, которые уже открыли (правилом или ведущий)
   rulesDone?: string[] // правила, которые ведущий уже выполнил или пропустил — больше не предлагаем
   shownMedia?: MediaRef | null // картинка или видео во весь экран зала (действие правила)
+  log?: LogEntry[] // журнал партии: кто, за что и сколько получил (log.ts)
 }
 
 // Финальный раунд: убирание тем → ставки → вопрос → итоги.

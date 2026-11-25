@@ -5,6 +5,7 @@ import SizeSliders from '../components/SizeSliders'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
+import GameLog from '../components/GameLog'
 import HowToRun from '../components/HowToRun'
 import FinalHost, { FinalAnswers } from '../components/FinalHost'
 import { finalStateOf, remover } from '../final'
@@ -62,8 +63,9 @@ import {
   unlockRound,
   viewPlayedCell,
   withClosed,
-  withScore,
-  withTeamScore,
+  adjustScore as adjustScoreIn,
+  closeQuestion as closeQuestionIn,
+  setScore as setScoreIn,
   type CellRef,
 } from '../play'
 
@@ -99,6 +101,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   const [hallMedia, setHallMedia] = useState<{ done: number; total: number } | null>(null) // файлы, загруженные в зале
   const [settingsOpen, setSettingsOpen] = useState(false) // открыта панель настроек (⚙)
   const [howToOpen, setHowToOpen] = useState(false) // открыта памятка «Как провести игру»
+  const [logOpen, setLogOpen] = useState(false) // открыт журнал партии
   const { pinned, toggle: togglePin } = usePinnedControls() // кнопки на панели ведущего
   const [otherHosts, setOtherHosts] = useState<string[]>([]) // пульт открыт ещё в других окнах — зал слушает все сразу
 
@@ -220,7 +223,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   function closeQuestion() {
-    commit(withClosed(live))
+    commit(closeQuestionIn(live))
   }
 
   // ---- Правила «ЕСЛИ → ТО» ----
@@ -296,12 +299,12 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   // Ручная правка счёта (вне вопроса тоже) — отменяется через Ctrl+Z
   function adjustScore(teamId: string, delta: number) {
-    commit(withScore(live, teamId, delta))
+    commit(adjustScoreIn(live, teamId, delta))
   }
 
   // Ведущий вписал счёт целиком — тоже отменяется через Ctrl+Z
   function setScore(teamId: string, score: number) {
-    commit(withTeamScore(live, teamId, () => score))
+    commit(setScoreIn(live, teamId, score))
   }
 
   // Листать слайды открытого вопроса: зал сразу показывает выбранный слайд
@@ -528,6 +531,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
           return toggleScreenHidden()
         case 'escape':
           if (howToOpen) setHowToOpen(false)
+          else if (logOpen) setLogOpen(false)
           else if (settingsOpen) setSettingsOpen(false)
           else if (preview) setPreview(null)
           else if (current && !isFinal) closeQuestion() // вопрос финала закрывается только итогами
@@ -659,6 +663,20 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             className={toggleClass(hallMouseOn(live))}
           >
             Мышь в зале: {hallMouseOn(live) ? 'вкл' : 'выкл'}
+          </button>
+        )
+      case 'log':
+        return (
+          <button
+            type="button"
+            onClick={() => {
+              setSettingsOpen(false)
+              setLogOpen(true)
+            }}
+            aria-expanded={logOpen}
+            className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            📜 Журнал{live.log?.length ? ` · ${live.log.length}` : ''}
           </button>
         )
       case 'how-to':
@@ -812,6 +830,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
       )}
 
       {howToOpen && <HowToRun onClose={() => setHowToOpen(false)} />}
+      {logOpen && <GameLog game={game} log={live.log ?? []} rehearsal={!!live.rehearsal} onClose={() => setLogOpen(false)} />}
 
       {/* Зал ещё не открыт (или его закрыли) — подсказываем, с чего начать */}
       {(hallStatus === null || hallStatus === 'closed') && !current && (
