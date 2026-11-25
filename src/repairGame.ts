@@ -6,6 +6,7 @@ import type { Box, Category, Content, Game, MediaRef, Player, Question, Question
 
 import { cleanClip } from './clip'
 import { cleanSpecial } from './special'
+import { cleanCat } from './catAuction'
 
 type Raw = Record<string, unknown>
 
@@ -116,6 +117,9 @@ function question(v: Raw): Question {
     ? cleanSpecial({ correct: maybeNumber(v.special.correct), wrong: maybeNumber(v.special.wrong), forAll: v.special.forAll === true })
     : undefined
   if (special) q.special = special
+  const catSettings = isObject(v.cat) ? cleanCat(v.cat) : undefined
+  if (catSettings) q.cat = catSettings
+  if (v.auction === 'all' || v.auction === 'turn') q.auction = v.auction
   return q
 }
 

@@ -1,3 +1,4 @@
+import { auctionStartProblem, catValue, isAuction, isCat, nextBidder, validBets, type AuctionState, type CatState } from './catAuction'
 import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes, removeTheme, withFinalScores } from './final'
 import { hiddenQuestions, nextTeamId, roundById } from './game'
 import { withLog } from './log'
@@ -127,17 +128,24 @@ export function openedQuestion(question: Question | undefined, theme: Theme): Pa
     video: null,
     branch: question?.tree ? startBranch(question.tree) : null,
     marks: {},
+    cat: null,
+    auction: null,
   }
 }
 
-// Сыграть ячейку: первой отвечает команда, чей ход (на вопрос «для всех команд» — все сразу)
+// Сыграть ячейку: первой отвечает команда, чей ход (на вопрос «для всех команд» — все сразу).
+// «Кот в мешке» сначала отдают, на аукционе сначала ставки — отвечающей команды пока нет.
 export function openCell(s: LiveState, cell: CellRef): LiveState {
   const question = cellQuestion(s, cell)
+  const cat = isCat(question)
+  const auction = isAuction(question)
   return {
     ...s,
     ...openedQuestion(question, s.game.theme),
     current: cell,
-    answeringTeamId: isForAll(question) ? null : s.turnTeamId,
+    answeringTeamId: isForAll(question) || cat || auction ? null : s.turnTeamId,
+    cat: cat ? { teamId: null } : null,
+    auction: auction ? { phase: 'bets', bets: {} } : null,
   }
 }
 
@@ -162,23 +170,99 @@ export function withClosed(s: LiveState): LiveState {
     video: null,
     branch: null,
     marks: {},
+    cat: null,
+    auction: null,
   }
 }
 
+// ---- «Кот в мешке» и аукцион (правила — catAuction.ts) ----
+
+// Открыт «Кот в мешке» (null — открыт другой вопрос или он открыт только посмотреть)
+export function catNow(s: LiveState): CatState | null {
+  return isCat(openQuestion(s)) && s.cat && !s.viewOnly ? s.cat : null
+}
+
+// Открыт аукцион
+export function auctionNow(s: LiveState): AuctionState | null {
+  return isAuction(openQuestion(s)) && s.auction && !s.viewOnly ? s.auction : null
+}
+
+// Команда, чей ход, отдала кота этой команде (можно и себе): теперь в зале сам вопрос, отвечает получатель
+export function giveCat(s: LiveState, teamId: string): LiveState {
+  const cat = catNow(s)
+  if (!cat || cat.teamId || !s.game.teams.some((t) => t.id === teamId)) return s
+  return { ...s, cat: { teamId }, answeringTeamId: teamId, slideIndex: 0 }
+}
+
+// Ставка команды на аукционе: число, null — пас, undefined — стереть. Проверяется при старте вопроса.
+export function auctionSetBet(s: LiveState, teamId: string, bet: number | null | undefined): LiveState {
+  const auction = auctionNow(s)
+  if (!auction || auction.phase !== 'bets') return s
+  const bets = { ...auction.bets }
+  if (bet === undefined) delete bets[teamId]
+  else bets[teamId] = bet
+  return { ...s, auction: { ...auction, bets } }
+}
+
+// Ставки сделаны — открываем вопрос. Без ставки — пас.
+// Первой отвечает команда, чей ход (или следующая по кругу со ставкой).
+export function auctionStart(s: LiveState): LiveState {
+  const auction = auctionNow(s)
+  const question = openQuestion(s)
+  if (!auction || !question || auction.phase !== 'bets') return s
+  if (auctionStartProblem(s.game, question, s.turnTeamId, auction.bets)) return s
+  const bets = validBets(s.game, question, s.turnTeamId, auction.bets)
+  return {
+    ...s,
+    auction: { phase: 'question', bets },
+    answeringTeamId: nextBidder(s.game, s.turnTeamId, bets, []),
+    slideIndex: 0,
+  }
+}
+
+// Сколько команда получит за верный ответ и потеряет за неверный (число без минуса):
+// у кота — его цена, на аукционе — ставка команды, у особого вопроса — ×2, ×3, без минуса
+export function answerPoints(s: LiveState, teamId: string | null): { plus: number; minus: number } {
+  const question = openQuestion(s)
+  if (!question) return { plus: 0, minus: 0 }
+  if (catNow(s)) return { plus: catValue(question), minus: catValue(question) }
+  const auction = auctionNow(s)
+  if (auction) {
+    const bet = (teamId && auction.bets[teamId]) || 0
+    return { plus: bet, minus: bet }
+  }
+  return { plus: correctPoints(question), minus: wrongPoints(question) }
+}
+
+// Подпись в журнале: «кот в мешке», «аукцион, ставка 500»
+function catAuctionNote(s: LiveState, teamId: string): { note?: string } {
+  if (catNow(s)) return { note: 'кот в мешке' }
+  const auction = auctionNow(s)
+  return auction ? { note: `аукцион, ставка ${auction.bets[teamId] ?? 0}` } : {}
+}
+
+// ---- Ответ ----
+
 // Можно ли этой команде сейчас ответить «Верно / Неверно»: обычный вопрос открыт, не «только посмотреть»,
-// команда ещё не ошибалась на нём
+// команда ещё не ошибалась на нём. Кота — только получатель; на аукционе — только команды со ставкой, после торгов.
 function canAnswer(s: LiveState, teamId: string): Question | null {
   const question = openQuestion(s)
   if (!question || question.tree || isForAll(question) || s.viewOnly || s.triedTeamIds.includes(teamId)) return null
+  const cat = catNow(s)
+  if (cat && cat.teamId !== teamId) return null
+  const auction = auctionNow(s)
+  if (auction && (auction.phase !== 'question' || typeof auction.bets[teamId] !== 'number')) return null
   return question
 }
 
-// Верно: команда получает стоимость (у особого вопроса — ×2, ×3), вопрос закрывается, ход — следующей по кругу
+// Верно: команда получает стоимость (у особого вопроса — ×2, ×3; кот — свою цену; аукцион — ставку),
+// вопрос закрывается, ход — следующей по кругу
 export function answerCorrect(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
-  const points = correctPoints(question)
-  return withClosed(withLog(withScore(s, teamId, points), { kind: 'correct', teamId, points, ...aboutCurrent(s) }))
+  const points = answerPoints(s, teamId).plus
+  const entry = { kind: 'correct' as const, teamId, points, ...aboutCurrent(s), ...catAuctionNote(s, teamId) }
+  return withClosed(withLog(withScore(s, teamId, points), entry))
 }
 
 // Ведущий закрыл вопрос сам — значит, верного ответа не было (верный ответ закрывает вопрос сразу)
@@ -190,17 +274,29 @@ export function closeQuestion(s: LiveState): LiveState {
 }
 
 // Неверно: команда теряет стоимость (у вопроса «без минуса» — ничего), вопрос остаётся открытым — его могут перехватить остальные
+// Кота не перехватывают; на аукционе сразу отвечает следующая по кругу команда со ставкой.
 export function answerWrong(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
-  const points = 0 - wrongPoints(question) || 0 // «|| 0» — без «−0» у вопроса без минуса
-  const scored = withLog(withScore(s, teamId, points), { kind: 'wrong', teamId, points, ...aboutCurrent(s) })
-  return { ...scored, answeringTeamId: null, triedTeamIds: [...s.triedTeamIds, teamId] }
+  const points = 0 - answerPoints(s, teamId).minus || 0 // «|| 0» — без «−0» у вопроса без минуса
+  const entry = { kind: 'wrong' as const, teamId, points, ...aboutCurrent(s), ...catAuctionNote(s, teamId) }
+  const scored = withLog(withScore(s, teamId, points), entry)
+  const triedTeamIds = [...s.triedTeamIds, teamId]
+  const auction = auctionNow(s)
+  const next = auction ? nextBidder(s.game, s.turnTeamId, auction.bets, triedTeamIds) : null
+  return { ...scored, answeringTeamId: next, triedTeamIds }
 }
 
 // Кто отвечает сейчас (основная команда или перехват; null — никто). Ошибившимся командам отвечать нельзя.
+// Кот ещё не отдан — нажатая команда его получает; потом отвечать может только получатель.
+// На аукционе отвечают только команды со ставкой и только после торгов.
 export function selectAnswering(s: LiveState, teamId: string | null): LiveState {
   if (s.viewOnly || isForAll(openQuestion(s)) || (teamId && s.triedTeamIds.includes(teamId))) return s
+  const cat = catNow(s)
+  if (cat && !cat.teamId) return teamId ? giveCat(s, teamId) : s
+  if (cat && teamId && teamId !== cat.teamId) return s
+  const auction = auctionNow(s)
+  if (auction && (auction.phase !== 'question' || (teamId && typeof auction.bets[teamId] !== 'number'))) return s
   return { ...s, answeringTeamId: teamId }
 }
 

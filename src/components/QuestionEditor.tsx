@@ -4,6 +4,16 @@ import { contentMedia } from '../pictures'
 import { newTree, treeContents } from '../tree'
 import { cleanSpecial, MULTIPLIERS, specialParts, specialTitle } from '../special'
 import type { Content, Question, Special } from '../types'
+import { catValue, cleanCat } from '../catAuction'
+
+// Вид вопроса в редакторе: обычный, кот, аукцион или ветвящийся (дерево)
+type QuestionKind = Question['kind'] | 'tree'
+const KINDS: { id: QuestionKind; label: string }[] = [
+  { id: 'normal', label: 'Обычный вопрос' },
+  { id: 'cat-in-bag', label: '🐱 Кот в мешке' },
+  { id: 'auction', label: '🔨 Аукцион' },
+  { id: 'tree', label: 'Ветвящийся вопрос (дерево)' },
+]
 import { ContentEditor, SmallButton } from './ContentEditor'
 import type { PreviewStart } from './HallPreview'
 import TreeEditor from './TreeEditor'
@@ -71,17 +81,23 @@ export default function QuestionEditor({
     for (const m of files) onMediaRemoved(m.id)
   }
 
-  // Обычный вопрос ↔ ветвящийся. Дерево начинается с того, что уже есть в вопросе (первый слайд и ответ).
-  function setBranching(on: boolean) {
-    if (on === !!question.tree) return
-    if (on) {
-      onChange((q) => ({ ...q, tree: newTree(q) }))
-      return
+  // Вид вопроса: обычный, «Кот в мешке», аукцион или ветвящийся (дерево начинается с того, что уже есть
+  // в вопросе — первый слайд и ответ). Настройки кота и аукциона при смене вида убираем.
+  const shownKind: QuestionKind = question.tree ? 'tree' : question.kind
+  function setKind(kind: QuestionKind) {
+    if (kind === shownKind) return
+    if (question.tree) {
+      const tree = question.tree
+      if (tree.nodes.length > 1 && !window.confirm(`Убрать дерево? Его шаги (${tree.nodes.length}) удалятся, останутся слайды и ответ вопроса. Это нельзя отменить.`)) return
+      for (const c of treeContents(tree)) for (const m of contentMedia(c)) onMediaRemoved(m.id)
     }
-    const tree = question.tree!
-    if (tree.nodes.length > 1 && !window.confirm(`Убрать дерево? Его шаги (${tree.nodes.length}) удалятся, останутся слайды и ответ вопроса. Это нельзя отменить.`)) return
-    for (const c of treeContents(tree)) for (const m of contentMedia(c)) onMediaRemoved(m.id)
-    onChange((q) => ({ ...q, tree: undefined }))
+    onChange((q) => {
+      const next: Question = { ...q, kind: kind === 'tree' ? 'normal' : kind, tree: kind === 'tree' ? newTree(q) : undefined }
+      if (kind !== 'cat-in-bag') delete next.cat
+      if (kind !== 'auction') delete next.auction
+      if (!next.tree) delete next.tree
+      return next
+    })
   }
 
   // Поменять слайд местами с соседним: delta = -1 — выше, +1 — ниже
@@ -158,15 +174,16 @@ export default function QuestionEditor({
       </div>
 
       <div role="group" aria-label="Вид вопроса" className="flex flex-wrap items-center gap-1.5">
-        {[false, true].map((branching) => (
+        {/* В финале кота и аукциона нет — там свои ставки */}
+        {KINDS.filter((k) => canHide || k.id === 'normal' || k.id === 'tree' || k.id === shownKind).map((k) => (
           <button
-            key={String(branching)}
+            key={k.id}
             type="button"
-            onClick={() => setBranching(branching)}
-            aria-pressed={branching === !!question.tree}
-            className={`h-11 rounded-lg px-4 text-sm ${branching === !!question.tree ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`}
+            onClick={() => setKind(k.id)}
+            aria-pressed={k.id === shownKind}
+            className={`h-11 rounded-lg px-4 text-sm ${k.id === shownKind ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`}
           >
-            {branching ? 'Ветвящийся вопрос (дерево)' : 'Обычный вопрос'}
+            {k.label}
           </button>
         ))}
       </div>
@@ -192,7 +209,9 @@ export default function QuestionEditor({
       )}
 
       {/* Особый вопрос: ×2, без минуса, для всех команд (у дерева и в финале баллы считаются по-своему) */}
-      {canHide && !question.tree && <SpecialEditor question={question} onChange={onChange} />}
+      {canHide && !question.tree && question.kind === 'normal' && <SpecialEditor question={question} onChange={onChange} />}
+      {/* «Кот в мешке» и аукцион: тема и цена кота, кто торгуется */}
+      {canHide && !question.tree && question.kind !== 'normal' && <CatAuctionEditor key={question.kind} question={question} onChange={onChange} />}
 
       {question.tree ? (
         <TreeEditor
@@ -332,6 +351,83 @@ function SpecialEditor({ question, onChange }: { question: Question; onChange: (
           ? 'Каждая команда пишет ответ на бумажке; ведущий отмечает на пульте, кто прав, и подводит итог. '
           : 'Ошиблась — вопрос можно перехватить, как обычно. '}
         В зале над вопросом будет надпись{parts.length ? ` «${specialTitle(question)}»` : ''}, на табло — ничего (сюрприз).
+      </p>
+    </fieldset>
+  )
+}
+
+// «Кот в мешке»: тема и цена; аукцион: кто торгуется. Правила — в catAuction.ts
+function CatAuctionEditor({ question, onChange }: { question: Question; onChange: (change: (q: Question) => Question) => void }) {
+  const [priceText, setPriceText] = useState(question.cat?.value ? String(question.cat.value) : '')
+  const chip = (on: boolean) => `h-11 rounded-lg px-4 text-sm ${on ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`
+  const setCat = (patch: { theme?: string; value?: number }) =>
+    onChange((q) => {
+      const next = { ...q }
+      const clean = cleanCat({ ...q.cat, ...patch })
+      if (clean) next.cat = clean
+      else delete next.cat
+      return next
+    })
+
+  if (question.kind === 'cat-in-bag') {
+    const price = Number(priceText.trim())
+    const priceBad = priceText.trim() !== '' && !(Number.isInteger(price) && price > 0)
+    return (
+      <fieldset className="flex flex-col gap-3 rounded-lg border border-line px-4 py-3">
+        <legend className="px-1 font-semibold">🐱 Кот в мешке · цена {catValue(question)}</legend>
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="w-44 text-sm text-muted">Тема кота</span>
+          <input
+            value={question.cat?.theme ?? ''}
+            onChange={(e) => setCat({ theme: e.target.value })}
+            placeholder="Например: Мультфильмы 90-х"
+            className="h-11 min-w-0 flex-1 rounded-lg border border-line bg-bg px-3 text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+          />
+        </label>
+        <label className="flex flex-wrap items-center gap-2">
+          <span className="w-44 text-sm text-muted">Цена кота</span>
+          <input
+            inputMode="numeric"
+            value={priceText}
+            onChange={(e) => {
+              setPriceText(e.target.value)
+              const n = Number(e.target.value.trim())
+              setCat({ value: Number.isInteger(n) && n > 0 ? n : undefined })
+            }}
+            placeholder={`как в ячейке — ${question.value}`}
+            className="h-11 w-48 rounded-lg border border-line bg-bg px-3 text-white placeholder:text-muted/60 focus:border-white focus:outline-none"
+          />
+          {priceBad && <span className="text-sm">⚠ цена — целое число больше нуля; пока стоит {question.value}</span>}
+        </label>
+        <p className="text-sm text-muted">
+          В зале сначала заставка «Кот в мешке», тема и цена. Команда, чей ход, отдаёт вопрос любой команде (можно и себе).
+          Отвечает только получатель: верно — +цена, неверно — −цена, перехвата нет. На табло — обычная ячейка (сюрприз).
+        </p>
+      </fieldset>
+    )
+  }
+
+  const mode = question.auction ?? 'all'
+  const setMode = (auction: 'all' | 'turn') => onChange((q) => ({ ...q, auction }))
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-lg border border-line px-4 py-3">
+      <legend className="px-1 font-semibold">🔨 Аукцион</legend>
+      <div role="group" aria-label="Кто торгуется" className="flex flex-wrap items-center gap-2">
+        <span className="w-44 text-sm text-muted">Кто делает ставки</span>
+        <button type="button" onClick={() => setMode('all')} aria-pressed={mode === 'all'} className={chip(mode === 'all')}>
+          все команды
+        </button>
+        <button type="button" onClick={() => setMode('turn')} aria-pressed={mode === 'turn'} className={chip(mode === 'turn')}>
+          только команда, чей ход
+        </button>
+      </div>
+      <p className="text-sm text-muted">
+        Ставки — шагом 100, от 100, не больше 25% от суммы плюсовых счетов (но не меньше цены ячейки); команда в плюсе —
+        не больше своего счёта, в минусе — не больше своего минуса.{' '}
+        {mode === 'all'
+          ? 'Каждая команда ставит или пасует. Первой отвечает команда, чей ход: верно — +ставка, неверно — −ставка, и отвечает следующая по кругу со своей ставкой.'
+          : 'Ставит и отвечает только команда, чей ход: верно — +ставка, неверно — −ставка, перехвата нет.'}{' '}
+        На табло — обычная ячейка (сюрприз).
       </p>
     </fieldset>
   )

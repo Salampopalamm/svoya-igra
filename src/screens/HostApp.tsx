@@ -40,9 +40,14 @@ import { usePinnedControls, type ControlId } from '../hostControls'
 import { hostKey, typingInField } from '../hostKeys'
 import { usePreload } from '../preload'
 import { isForAll } from '../special'
+import CatAuctionHost from '../components/CatAuctionHost'
 import {
   answerCorrect,
   answerWrong,
+  auctionNow,
+  auctionSetBet,
+  auctionStart,
+  catNow,
   chooseBranch,
   finalMark as finalMarkIn,
   finalRemoveTheme as finalRemoveThemeIn,
@@ -368,8 +373,20 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   }
 
   // Кто отвечает сейчас (основная команда или перехват). Ошибившимся командам отвечать нельзя.
+  // «Кот в мешке» ещё не отдан — нажатая команда его получает (это шаг игры: Ctrl+Z его отменит)
   function selectTeam(teamId: string | null) {
-    setLive((s) => selectAnswering(s, teamId))
+    const cat = catNow(live)
+    if (cat && !cat.teamId) commit(selectAnswering(live, teamId))
+    else setLive((s) => selectAnswering(s, teamId))
+  }
+
+  // Аукцион: ставку вписывают по цифре — каждую не запоминаем для Ctrl+Z; старт вопроса — запоминаем
+  function setAuctionBet(teamId: string, bet: number | null | undefined) {
+    setLive((s) => auctionSetBet(s, teamId, bet))
+  }
+
+  function startAuction() {
+    commit(auctionStart(live))
   }
 
   // Ведущий передал ход другой команде — отменяется через Ctrl+Z
@@ -581,7 +598,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   const turnTeam = game.teams.find((t) => t.id === turnTeamId)
   const answeringTeam = game.teams.find((t) => t.id === answeringTeamId)
-  const stealing = triedTeamIds.length > 0 // основная команда ошиблась — идёт перехват
+  // Основная команда ошиблась — идёт перехват (у кота перехвата нет, на аукционе отвечают по очереди ставок)
+  const stealing = triedTeamIds.length > 0 && !catNow(live) && !auctionNow(live)
   // Что подсвечено на счёте: на табло — чей ход, в вопросе — кто отвечает
   // В финале подсвечена только команда, которая убирает тему
   const finalRemover = final?.phase === 'themes' ? remover(game, final) : undefined
@@ -1003,6 +1021,27 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
                   marks={live.marks ?? {}}
                   onMark={markAll}
                   onReveal={revealAll}
+                  onClose={closeQuestion}
+                />
+              ) : undefined
+            }
+            catAuction={
+              catNow(live) || auctionNow(live) ? (
+                <CatAuctionHost
+                  game={game}
+                  question={currentCell.question}
+                  turnTeamId={turnTeamId}
+                  answeringTeamId={answeringTeamId}
+                  triedTeamIds={triedTeamIds}
+                  cat={catNow(live)}
+                  auction={auctionNow(live)}
+                  nextTurnTeamName={game.teams.find((t) => t.id === nextTeamId(game, turnTeamId))?.name}
+                  onGive={selectTeam}
+                  onSetBet={setAuctionBet}
+                  onStartAuction={startAuction}
+                  onSelectTeam={selectTeam}
+                  onCorrect={handleCorrect}
+                  onWrong={handleWrong}
                   onClose={closeQuestion}
                 />
               ) : undefined

@@ -9,11 +9,13 @@ type Props = {
   question: Question
   slideIndex: number
   showAnswer: boolean
-  teams: Team[]
   answeringTeam?: Team
-  triedTeamIds: string[]
   timer: TimerState | null // null — таймера у вопроса нет
   scoring: boolean // можно ли «Верно / Неверно» (не финал, не дерево, не «только посмотреть»)
+  plus: number // сколько получит отвечающая команда за верный ответ
+  minus: number // сколько потеряет за неверный (0 — без минуса)
+  pickTeams: Team[] // кого можно выбрать отвечающим (кот, аукцион — не всех)
+  pickLabel: string // «Кто отвечает?» или «Кому отдать кота?»
   final: boolean // вопрос финала: ответ и выход — только через итоги на пульте
   onAction: (action: HallAction) => void
 }
@@ -26,11 +28,13 @@ export default function HallMousePanel({
   question,
   slideIndex,
   showAnswer,
-  teams,
   answeringTeam,
-  triedTeamIds,
   timer,
   scoring,
+  plus,
+  minus,
+  pickTeams,
+  pickLabel,
   final,
   onAction,
 }: Props) {
@@ -39,7 +43,6 @@ export default function HallMousePanel({
   const left = useTimeLeft(timer)
   const timerRunning = timer ? timer.endsAt !== null && left > 0 : null
   const count = question.slides.length
-  const allTried = teams.length > 0 && teams.every((t) => triedTeamIds.includes(t.id))
 
   const button = 'h-14 min-w-14 rounded-xl border-2 border-line bg-bg px-4 text-lg font-semibold hover:border-white disabled:opacity-30'
   const primary = 'h-14 rounded-xl bg-accent px-5 text-lg font-semibold text-on-accent hover:opacity-90'
@@ -98,18 +101,17 @@ export default function HallMousePanel({
               {answeringTeam.name}
             </span>
             <button type="button" onClick={() => onAction({ kind: 'correct' })} className={primary}>
-              ✓ Верно +{question.value}
+              ✓ Верно +{plus}
             </button>
             <button type="button" onClick={() => onAction({ kind: 'wrong' })} className={button}>
-              ✗ Неверно −{question.value}
+              ✗ Неверно {minus ? `−${minus}` : '· 0'}
             </button>
           </>
         )}
-        {scoring && !answeringTeam && !allTried && (
+        {scoring && !answeringTeam && pickTeams.length > 0 && (
           <>
-            <span className="px-2 text-lg text-muted">Кто отвечает?</span>
-            {teams
-              .filter((t) => !triedTeamIds.includes(t.id))
+            <span className="px-2 text-lg text-muted">{pickLabel}</span>
+            {pickTeams
               .map((t) => (
                 <button key={t.id} type="button" onClick={() => onAction({ kind: 'team', teamId: t.id })} className={`${button} flex items-center gap-2`}>
                   <TeamIcon team={t} size={24} />

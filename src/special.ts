@@ -1,14 +1,15 @@
+import { catAuctionLabel, isAuction, isCat } from './catAuction'
 import type { Question, Special } from './types'
 
 // Особые вопросы: общая схема «до вопроса → кто отвечает → как считать баллы».
 //   Как считать: множитель за верный ответ (×2, ×3) и за неверный (×1 — минус стоимость, ×0 — без минуса).
 //   Кто отвечает: команда, чей ход (с перехватом), или все команды сразу — ведущий отмечает каждую.
-//   До вопроса (позже, когда решим правила): «Кот в мешке» — передать вопрос, аукцион — ставки.
-// Ветвящийся вопрос и финал считают баллы по-своему — особые настройки на них не действуют.
+//   До вопроса: «Кот в мешке» — передать вопрос, аукцион — ставки (правила — catAuction.ts).
+// Ветвящийся вопрос, кот, аукцион и финал считают баллы по-своему — особые настройки на них не действуют.
 
 export const MULTIPLIERS = [1, 2, 3] as const
 
-const special = (q: Question): Special => (q.tree ? {} : (q.special ?? {}))
+const special = (q: Question): Special => (q.tree || isCat(q) || isAuction(q) ? {} : (q.special ?? {}))
 
 // Сколько получает команда за верный ответ
 export const correctPoints = (q: Question) => q.value * (special(q).correct ?? 1)
@@ -29,18 +30,21 @@ export function cleanSpecial(s: Special | undefined): Special | undefined {
   return Object.keys(result).length ? result : undefined
 }
 
-// Подписи особенностей: «×2», «без минуса», «для всех команд»
+// Подписи особенностей: «×2», «без минуса», «для всех команд», «кот в мешке · 600», «аукцион · торгуются все»
 export function specialParts(q: Question): string[] {
   const s = special(q)
-  const parts: string[] = []
+  const kind = catAuctionLabel(q)
+  const parts: string[] = kind ? [kind] : []
   if (s.correct && s.correct !== 1) parts.push(`×${s.correct}`)
   if (s.wrong === 0) parts.push('без минуса')
   if (s.forAll) parts.push('для всех команд')
   return parts
 }
 
-// Заголовок вопроса в зале: «Вопрос для всех команд · ×2» (обычный — null)
+// Заголовок вопроса в зале: «Вопрос для всех команд · ×2», «Кот в мешке · Тема» (обычный — null)
 export function specialTitle(q: Question): string | null {
+  if (isCat(q)) return ['Кот в мешке', q.cat?.theme?.trim()].filter(Boolean).join(' · ')
+  if (isAuction(q)) return 'Аукцион'
   const scoring = specialParts(q).filter((p) => p !== 'для всех команд')
   if (isForAll(q)) return ['Вопрос для всех команд', ...scoring].join(' · ')
   return scoring.length ? `Особый вопрос · ${scoring.join(' · ')}` : null

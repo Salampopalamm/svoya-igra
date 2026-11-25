@@ -18,6 +18,9 @@ import { roundById } from '../game'
 import { CHANNEL, hallMouseOn, type HallAction, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
 import { specialTitle } from '../special'
+import { answerOrder } from '../catAuction'
+import { answerPoints, auctionNow, catNow } from '../play'
+import CatAuctionScreen from '../components/CatAuctionScreen'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
@@ -126,9 +129,23 @@ export default function ScreenApp() {
   // Финал идёт своими шагами: темы → ставки → вопрос → итоги
   const final = round.kind === 'final' ? finalStateOf(live.final, round) : null
   const finalRemover = final?.phase === 'themes' ? remover(game, final) : undefined
-  // Подсветка команды: на табло — чей ход, в вопросе — кто отвечает; ошибившиеся — бледные; в финале — кто убирает тему
-  const activeTeamId = final ? (finalRemover?.id ?? null) : questionOpen ? answeringTeamId : (turnTeam?.id ?? null)
-  const activeLabel = final ? 'УБИРАЕТ' : questionOpen ? (stealing ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  // «Кот в мешке» ещё не отдан или на аукционе идут торги — в зале заставка вместо вопроса
+  const catState = catNow(live)
+  const auctionState = auctionNow(live)
+  const intro = questionOpen && !showAnswer && ((!!catState && !catState.teamId) || auctionState?.phase === 'bets')
+  // Подсветка команды: на табло и на заставке кота / аукциона — чей ход, в вопросе — кто отвечает;
+  // ошибившиеся — бледные; в финале — кто убирает тему
+  const activeTeamId = final ? (finalRemover?.id ?? null) : questionOpen && !intro ? answeringTeamId : (turnTeam?.id ?? null)
+  const activeLabel = final ? 'УБИРАЕТ' : questionOpen && !intro ? (stealing && !catState && !auctionState ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  // Над вопросом аукциона — кто отвечает и его ставка
+  const auctionBet = auctionState && answeringTeam ? auctionState.bets[answeringTeam.id] : undefined
+  const questionTitle = auctionBet ? `Аукцион · ${answeringTeam!.name} · ставка ${auctionBet}` : question ? specialTitle(question) : null
+  // Кого можно выбрать отвечающим мышью в зале: кота отдают любой команде, на аукционе — только командам со ставкой
+  const pickTeams = catState
+    ? catState.teamId ? [] : game.teams
+    : auctionState
+      ? auctionState.phase === 'question' ? answerOrder(game, live.turnTeamId, auctionState.bets).filter((t) => !triedTeamIds.includes(t.id)) : []
+      : game.teams.filter((t) => !triedTeamIds.includes(t.id))
   const outTeamIds = questionOpen ? triedTeamIds : []
 
   // «Мышь в зале»: нажатия на экране зала уходят на пульт, игру меняет он
@@ -163,10 +180,12 @@ export default function ScreenApp() {
       : (branchNode?.content ?? question.slides[slideIndex])?.place)
 
   const content =
-    category && question ? (
+    category && question && intro ? (
+      <CatAuctionScreen game={game} category={category} question={question} turnTeamId={live.turnTeamId} auction={auctionState} />
+    ) : category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
         <ScreenQuestion
-          title={final ? `Финал · ${category.title}` : (specialTitle(question) ?? undefined)}
+          title={final ? `Финал · ${category.title}` : (questionTitle ?? undefined)}
           question={question}
           slideIndex={slideIndex}
           showAnswer={showAnswer}
@@ -192,7 +211,7 @@ export default function ScreenApp() {
   // Вопрос или табло появляются плавно (новый ключ — новая анимация)
   const main = (
     <div
-      key={question ? `${question.id}-${live.branch?.nodeId ?? ''}` : final ? `final-${final.phase}` : `board-${round.id}`}
+      key={question ? `${question.id}-${live.branch?.nodeId ?? ''}${intro ? '-intro' : ''}` :final ? `final-${final.phase}` : `board-${round.id}`}
       className="anim-appear flex min-h-0 flex-1 flex-col"
     >
       {/* Сломался вопрос или табло — зрители видят пустое место, а не ошибку; следующее действие пульта пробует снова */}
@@ -259,11 +278,13 @@ export default function ScreenApp() {
             question={question}
             slideIndex={slideIndex}
             showAnswer={showAnswer}
-            teams={game.teams}
             answeringTeam={answeringTeam}
-            triedTeamIds={triedTeamIds}
             timer={live.timer ?? null}
-            scoring={!final && !question.tree && !live.viewOnly}
+            scoring={!final && !question.tree && !live.viewOnly && auctionState?.phase !== 'bets'}
+            plus={answerPoints(live, answeringTeamId).plus}
+            minus={answerPoints(live, answeringTeamId).minus}
+            pickTeams={pickTeams}
+            pickLabel={catState && !catState.teamId ? 'Кому отдать кота?' : 'Кто отвечает?'}
             final={!!final}
             onAction={act}
           />

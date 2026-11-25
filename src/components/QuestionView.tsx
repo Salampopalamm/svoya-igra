@@ -35,6 +35,7 @@ type Props = {
   final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
   branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
   forAll?: ReactNode // вопрос «для всех команд»: внизу вместо команд по очереди — отметки каждой (AllAnswers)
+  catAuction?: ReactNode // «Кот в мешке» или аукцион: внизу — кому отдать, ставки, потом ответ (CatAuctionHost)
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -208,6 +209,7 @@ export default function QuestionView({
   final,
   branch,
   forAll,
+  catAuction,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -333,7 +335,7 @@ export default function QuestionView({
             Вернуться к табло · Esc
           </button>
         </div>
-      ) : branch?.bottom ?? final ?? forAll ?? (
+      ) : branch?.bottom ?? final ?? forAll ?? catAuction ?? (
       <div className="mt-auto flex flex-col gap-3">
         <div className="text-xl font-semibold" aria-live="polite">
           {status}

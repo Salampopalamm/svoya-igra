@@ -115,6 +115,8 @@ export type Question = {
   hidden?: boolean // скрыт, пока дерево или правило его не откроет
   tree?: QuestionTree
   special?: Special // особый вопрос: ×2, без минуса, для всех команд (функции — special.ts); пусто — обычный
+  cat?: CatSettings // «Кот в мешке» (kind 'cat-in-bag'): своя тема и цена (функции — catAuction.ts); kind не 'normal' — особые настройки не действуют
+  auction?: 'all' | 'turn' // аукцион (kind 'auction'): торгуются все команды или ставит только та, чей ход; пусто — все
   played: boolean
 }
 
@@ -124,6 +126,9 @@ export type Special = {
   wrong?: number // множитель за неверный: 0 — без минуса (пусто — минус стоимость)
   forAll?: boolean // отвечают все команды сразу (на бумажках), ведущий отмечает каждую
 }
+
+// «Кот в мешке»: тема, которую объявляют в зале, и цена (пусто — как в ячейке)
+export type CatSettings = { theme?: string; value?: number }
 
 export type Category = { id: string; title: string; questions: Question[] }
 
