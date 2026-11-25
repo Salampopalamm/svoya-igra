@@ -2,6 +2,7 @@ import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes
 import { hiddenQuestions, nextTeamId, roundById } from './game'
 import { withLog } from './log'
 import { newTimer, pauseTimer, startTimer, type Current, type FinalState, type LiveState } from './live'
+import { correctPoints, isForAll, wrongPoints } from './special'
 import { chooseOption, startBranch } from './tree'
 import type { Game, Question, Rule, Theme } from './types'
 
@@ -124,12 +125,19 @@ export function openedQuestion(question: Question | undefined, theme: Theme): Pa
     timer: questionTimer(question, theme),
     video: null,
     branch: question?.tree ? startBranch(question.tree) : null,
+    marks: {},
   }
 }
 
-// Сыграть ячейку: первой отвечает команда, чей ход
+// Сыграть ячейку: первой отвечает команда, чей ход (на вопрос «для всех команд» — все сразу)
 export function openCell(s: LiveState, cell: CellRef): LiveState {
-  return { ...s, ...openedQuestion(cellQuestion(s, cell), s.game.theme), current: cell, answeringTeamId: s.turnTeamId }
+  const question = cellQuestion(s, cell)
+  return {
+    ...s,
+    ...openedQuestion(question, s.game.theme),
+    current: cell,
+    answeringTeamId: isForAll(question) ? null : s.turnTeamId,
+  }
 }
 
 // Сыгранную (красную) ячейку открыли только посмотреть: без «Верно / Неверно», ход потом не переходит
@@ -152,6 +160,7 @@ export function withClosed(s: LiveState): LiveState {
     timer: null,
     video: null,
     branch: null,
+    marks: {},
   }
 }
 
@@ -159,15 +168,15 @@ export function withClosed(s: LiveState): LiveState {
 // команда ещё не ошибалась на нём
 function canAnswer(s: LiveState, teamId: string): Question | null {
   const question = openQuestion(s)
-  if (!question || question.tree || s.viewOnly || s.triedTeamIds.includes(teamId)) return null
+  if (!question || question.tree || isForAll(question) || s.viewOnly || s.triedTeamIds.includes(teamId)) return null
   return question
 }
 
-// Верно: команда получает стоимость, вопрос закрывается, ход — следующей по кругу
+// Верно: команда получает стоимость (у особого вопроса — ×2, ×3), вопрос закрывается, ход — следующей по кругу
 export function answerCorrect(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
-  const points = question.value
+  const points = correctPoints(question)
   return withClosed(withLog(withScore(s, teamId, points), { kind: 'correct', teamId, points, ...aboutCurrent(s) }))
 }
 
@@ -179,19 +188,52 @@ export function closeQuestion(s: LiveState): LiveState {
   return withClosed(nobody ? withLog(s, { kind: 'nobody', points: 0, ...aboutCurrent(s) }) : s)
 }
 
-// Неверно: команда теряет стоимость, вопрос остаётся открытым — его могут перехватить остальные
+// Неверно: команда теряет стоимость (у вопроса «без минуса» — ничего), вопрос остаётся открытым — его могут перехватить остальные
 export function answerWrong(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
-  const points = -question.value
+  const points = 0 - wrongPoints(question) || 0 // «|| 0» — без «−0» у вопроса без минуса
   const scored = withLog(withScore(s, teamId, points), { kind: 'wrong', teamId, points, ...aboutCurrent(s) })
   return { ...scored, answeringTeamId: null, triedTeamIds: [...s.triedTeamIds, teamId] }
 }
 
 // Кто отвечает сейчас (основная команда или перехват; null — никто). Ошибившимся командам отвечать нельзя.
 export function selectAnswering(s: LiveState, teamId: string | null): LiveState {
-  if (s.viewOnly || (teamId && s.triedTeamIds.includes(teamId))) return s
+  if (s.viewOnly || isForAll(openQuestion(s)) || (teamId && s.triedTeamIds.includes(teamId))) return s
   return { ...s, answeringTeamId: teamId }
+}
+
+// ---- Вопрос «для всех команд»: отвечают все сразу (на бумажках), ведущий отмечает каждую ----
+
+// Отметка команды: верно / неверно; та же ещё раз — снять (команда не ответила)
+export function markAll(s: LiveState, teamId: string, correct: boolean): LiveState {
+  if (!isForAll(openQuestion(s)) || s.viewOnly || !s.game.teams.some((t) => t.id === teamId)) return s
+  const marks = { ...s.marks }
+  if (marks[teamId] === correct) delete marks[teamId]
+  else marks[teamId] = correct
+  return { ...s, marks }
+}
+
+// Подвести итог: верные получают стоимость, неверные теряют, без отметки — ничего. Вопрос закрывается.
+export function revealAll(s: LiveState): LiveState {
+  const question = openQuestion(s)
+  if (!question || !isForAll(question) || s.viewOnly) return s
+  const marks = s.marks ?? {}
+  const marked = s.game.teams.filter((t) => marks[t.id] !== undefined)
+  let next = s
+  for (const team of marked) {
+    const correct = marks[team.id]
+    const points = correct ? correctPoints(question) : 0 - wrongPoints(question) || 0
+    next = withLog(withScore(next, team.id, points), {
+      kind: correct ? 'correct' : 'wrong',
+      teamId: team.id,
+      points,
+      note: 'все команды',
+      ...aboutCurrent(s),
+    })
+  }
+  if (!marked.length) next = withLog(next, { kind: 'nobody', points: 0, ...aboutCurrent(s) })
+  return withClosed(next)
 }
 
 // Передать ход другой команде (на табло)

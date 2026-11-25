@@ -114,7 +114,15 @@ export type Question = {
   hostNote?: string
   hidden?: boolean // скрыт, пока дерево или правило его не откроет
   tree?: QuestionTree
+  special?: Special // особый вопрос: ×2, без минуса, для всех команд (функции — special.ts); пусто — обычный
   played: boolean
+}
+
+// Особый вопрос: как считать баллы и кто отвечает (пусто — как обычно)
+export type Special = {
+  correct?: number // множитель за верный ответ: 2 или 3 (пусто — 1)
+  wrong?: number // множитель за неверный: 0 — без минуса (пусто — минус стоимость)
+  forAll?: boolean // отвечают все команды сразу (на бумажках), ведущий отмечает каждую
 }
 
 export type Category = { id: string; title: string; questions: Question[] }

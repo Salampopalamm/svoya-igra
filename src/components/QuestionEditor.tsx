@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { questionProblem, type HiddenChoice } from '../game'
 import { contentMedia } from '../pictures'
 import { newTree, treeContents } from '../tree'
-import type { Content, Question } from '../types'
+import { cleanSpecial, MULTIPLIERS, specialParts, specialTitle } from '../special'
+import type { Content, Question, Special } from '../types'
 import { ContentEditor, SmallButton } from './ContentEditor'
 import type { PreviewStart } from './HallPreview'
 import TreeEditor from './TreeEditor'
@@ -190,6 +191,9 @@ export default function QuestionEditor({
         </label>
       )}
 
+      {/* Особый вопрос: ×2, без минуса, для всех команд (у дерева и в финале баллы считаются по-своему) */}
+      {canHide && !question.tree && <SpecialEditor question={question} onChange={onChange} />}
+
       {question.tree ? (
         <TreeEditor
           tree={question.tree}
@@ -280,3 +284,55 @@ export default function QuestionEditor({
 
 const MAX_TIMER_SEC = 600 // таймер — до 10 минут
 const TIMER_PRESETS = [15, 30, 60]
+
+// Особый вопрос: как считать баллы и кто отвечает. Всё выключено — обычный вопрос.
+function SpecialEditor({ question, onChange }: { question: Question; onChange: (change: (q: Question) => Question) => void }) {
+  const special = question.special ?? {}
+  const set = (patch: Special) =>
+    onChange((q) => {
+      const next = { ...q }
+      const clean = cleanSpecial({ ...q.special, ...patch })
+      if (clean) next.special = clean
+      else delete next.special
+      return next
+    })
+  const chip = (on: boolean) => `h-11 rounded-lg px-4 text-sm ${on ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`
+  const parts = specialParts(question)
+  return (
+    <fieldset className="flex flex-col gap-3 rounded-lg border border-line px-4 py-3">
+      <legend className="px-1 font-semibold">⭐ Особый вопрос{parts.length ? ` · ${parts.join(' · ')}` : ''}</legend>
+      <div role="group" aria-label="За верный ответ" className="flex flex-wrap items-center gap-2">
+        <span className="w-44 text-sm text-muted">За верный ответ</span>
+        {MULTIPLIERS.map((m) => (
+          <button key={m} type="button" onClick={() => set({ correct: m })} aria-pressed={(special.correct ?? 1) === m} className={chip((special.correct ?? 1) === m)}>
+            {m === 1 ? `+${question.value}` : `×${m} · +${question.value * m}`}
+          </button>
+        ))}
+      </div>
+      <div role="group" aria-label="За неверный ответ" className="flex flex-wrap items-center gap-2">
+        <span className="w-44 text-sm text-muted">За неверный ответ</span>
+        <button type="button" onClick={() => set({ wrong: 1 })} aria-pressed={special.wrong !== 0} className={chip(special.wrong !== 0)}>
+          минус стоимость
+        </button>
+        <button type="button" onClick={() => set({ wrong: 0 })} aria-pressed={special.wrong === 0} className={chip(special.wrong === 0)}>
+          без минуса
+        </button>
+      </div>
+      <div role="group" aria-label="Кто отвечает" className="flex flex-wrap items-center gap-2">
+        <span className="w-44 text-sm text-muted">Кто отвечает</span>
+        <button type="button" onClick={() => set({ forAll: false })} aria-pressed={!special.forAll} className={chip(!special.forAll)}>
+          команда, чей ход
+        </button>
+        <button type="button" onClick={() => set({ forAll: true })} aria-pressed={!!special.forAll} className={chip(!!special.forAll)}>
+          все команды сразу
+        </button>
+      </div>
+      <p className="text-sm text-muted">
+        {special.forAll
+          ? 'Каждая команда пишет ответ на бумажке; ведущий отмечает на пульте, кто прав, и подводит итог. '
+          : 'Ошиблась — вопрос можно перехватить, как обычно. '}
+        В зале над вопросом будет надпись{parts.length ? ` «${specialTitle(question)}»` : ''}, на табло — ничего (сюрприз).
+      </p>
+    </fieldset>
+  )
+}

@@ -3,6 +3,7 @@ import { sortByValue } from '../game'
 import { itemGrow } from '../theme'
 import { Resizable } from './Resizable'
 import type { Round } from '../types'
+import { specialParts } from '../special'
 
 type Props = {
   round: Round
@@ -123,6 +124,8 @@ export default function Board({
             // @container + cqw: номинал уменьшается под ширину ячейки — «1000» помещается и при 10 колонках
             const cellClass = `@container flex min-h-20 w-full items-center justify-center rounded-xl border-2 font-display ${justUnlocked ? 'border-accent bg-accent text-on-accent' : 'border-white'}`
             const label = <span className="text-[min(1.875rem,20cqw)]">{value}</span>
+            // Особый вопрос — пометка только на пульте (в зале — сюрприз)
+            const special = interactive ? specialParts(question) : []
 
             if (!interactive) {
               // Зал, «Мышь в зале» включена: ячейку можно нажать прямо на проекторе
@@ -148,9 +151,10 @@ export default function Board({
               <button
                 type="button"
                 onClick={() => onCellClick?.(category.id, question.id)}
-                className={`${cellClass} transition hover:bg-white hover:text-black`}
+                className={`${cellClass} flex-col transition hover:bg-white hover:text-black`}
               >
                 {label}
+                {special.length > 0 && <span className="font-sans text-xs">{special.join(' · ')}</span>}
               </button>
             )
           })}

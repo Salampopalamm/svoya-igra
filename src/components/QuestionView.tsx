@@ -3,6 +3,7 @@ import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
 import { plural } from '../plural'
+import { correctPoints, specialParts, wrongPoints } from '../special'
 import { ContentMedia, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
 
@@ -33,6 +34,7 @@ type Props = {
   onTimeUp: () => void // время вышло — сигнал
   final?: ReactNode // вопрос финала: цены нет, ответ — вместе с итогами, внизу вместо команд — отметки по ставкам
   branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
+  forAll?: ReactNode // вопрос «для всех команд»: внизу вместо команд по очереди — отметки каждой (AllAnswers)
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -205,6 +207,7 @@ export default function QuestionView({
   onTimeUp,
   final,
   branch,
+  forAll,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -215,6 +218,9 @@ export default function QuestionView({
   const answeringTeam = teams.find((t) => t.id === answeringTeamId)
   const allTried = teams.length > 0 && teams.every((t) => triedTeamIds.includes(t.id))
   const triedNames = teams.filter((t) => triedTeamIds.includes(t.id)).map((t) => `«${t.name}»`)
+  const plus = correctPoints(question)
+  const minus = wrongPoints(question)
+  const special = specialParts(question) // ×2, без минуса, для всех команд
   const waitingSteal = stealing && !answeringTeam && !allTried // ошиблись, ждём, возьмётся ли кто-то перехватить
   const status = allTried
     ? 'Все команды ошиблись — покажите ответ и закройте вопрос'
@@ -233,6 +239,11 @@ export default function QuestionView({
             <>
               {' · '}
               <span className="rounded-lg bg-white px-4 py-1 text-black">{question.value}</span>
+              {special.length > 0 && (
+                <span className="ml-3 rounded-lg border border-white px-3 py-1 align-middle font-sans text-base font-semibold">
+                  {special.join(' · ')}
+                </span>
+              )}
             </>
           )}
         </span>
@@ -322,7 +333,7 @@ export default function QuestionView({
             Вернуться к табло · Esc
           </button>
         </div>
-      ) : branch?.bottom ?? final ?? (
+      ) : branch?.bottom ?? final ?? forAll ?? (
       <div className="mt-auto flex flex-col gap-3">
         <div className="text-xl font-semibold" aria-live="polite">
           {status}
@@ -374,7 +385,7 @@ export default function QuestionView({
                 </button>
 
                 {tried ? (
-                  <div className="flex h-11 items-center text-muted">Ошиблись −{question.value}</div>
+                  <div className="flex h-11 items-center text-muted">{minus ? `Ошиблись −${minus}` : 'Ошиблись · без минуса'}</div>
                 ) : answering ? (
                   <div className="flex gap-2">
                     <button
@@ -382,14 +393,14 @@ export default function QuestionView({
                       onClick={() => onCorrect(team.id)}
                       className="h-11 flex-1 rounded-lg bg-white font-semibold text-black hover:opacity-90"
                     >
-                      Верно +{question.value}
+                      Верно +{plus}
                     </button>
                     <button
                       type="button"
                       onClick={() => onWrong(team.id)}
                       className="h-11 flex-1 rounded-lg border border-white hover:bg-cell"
                     >
-                      Неверно −{question.value}
+                      {minus ? `Неверно −${minus}` : 'Неверно · 0'}
                     </button>
                   </div>
                 ) : stealing && !answeringTeam ? (

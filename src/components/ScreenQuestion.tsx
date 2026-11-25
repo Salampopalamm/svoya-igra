@@ -8,7 +8,7 @@ import { Resizable } from './Resizable'
 import { LETTERS } from '../tree'
 
 type Props = {
-  title?: string // заголовок над вопросом — только в финале («Финал · тема»)
+  title?: string // заголовок над вопросом — только в финале («Финал · тема») и у особого вопроса («Вопрос для всех команд»)
   question: Question
   slideIndex: number // какой слайд показывать
   showAnswer: boolean

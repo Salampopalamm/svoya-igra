@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { newTimer, pauseTimer, startTimer, type TimerState } from '../live'
 import { contentAt, setContentPlace } from '../placement'
+import { specialTitle } from '../special'
 import type { PlaceTarget, Player, Question, Team, Theme } from '../types'
 import { VideoContext } from '../videoControl'
 import { HallFrame } from './HallFrame'
@@ -101,6 +102,7 @@ export default function HallPreview({ theme, teams, players, question, start, on
   const main = (
     <div key={slideIndex} className="anim-appear flex min-h-0 flex-1 flex-col">
       <ScreenQuestion
+        title={specialTitle(question) ?? undefined}
         question={question}
         slideIndex={slideIndex}
         showAnswer={showAnswer}

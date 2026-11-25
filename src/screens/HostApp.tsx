@@ -5,6 +5,7 @@ import SizeSliders from '../components/SizeSliders'
 import PreviewView from '../components/PreviewView'
 import HostSettings, { GearIcon } from '../components/HostSettings'
 import MediaStatus from '../components/MediaStatus'
+import AllAnswers from '../components/AllAnswers'
 import GameLog from '../components/GameLog'
 import HowToRun from '../components/HowToRun'
 import FinalHost, { FinalAnswers } from '../components/FinalHost'
@@ -38,6 +39,7 @@ import { clampSize, FONTS, hallSizes, TONES } from '../theme'
 import { usePinnedControls, type ControlId } from '../hostControls'
 import { hostKey, typingInField } from '../hostKeys'
 import { usePreload } from '../preload'
+import { isForAll } from '../special'
 import {
   answerCorrect,
   answerWrong,
@@ -65,6 +67,8 @@ import {
   withClosed,
   adjustScore as adjustScoreIn,
   closeQuestion as closeQuestionIn,
+  markAll as markAllIn,
+  revealAll as revealAllIn,
   setScore as setScoreIn,
   type CellRef,
 } from '../play'
@@ -224,6 +228,15 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   function closeQuestion() {
     commit(closeQuestionIn(live))
+  }
+
+  // Вопрос «для всех команд»: отметка команды и итог
+  function markAll(teamId: string, correct: boolean) {
+    commit(markAllIn(live, teamId, correct))
+  }
+
+  function revealAll() {
+    commit(revealAllIn(live))
   }
 
   // ---- Правила «ЕСЛИ → ТО» ----
@@ -969,6 +982,18 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
               if (game.theme.sounds.enabled) playTimeUp()
             }}
             final={final ? <FinalAnswers game={game} final={final} onMark={finalMark} onReveal={finalReveal} /> : undefined}
+            forAll={
+              isForAll(currentCell.question) ? (
+                <AllAnswers
+                  question={currentCell.question}
+                  teams={game.teams}
+                  marks={live.marks ?? {}}
+                  onMark={markAll}
+                  onReveal={revealAll}
+                  onClose={closeQuestion}
+                />
+              ) : undefined
+            }
             branch={
               currentCell.question.tree && live.branch
                 ? {

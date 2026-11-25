@@ -5,6 +5,7 @@ import type { Box, Category, Content, Game, MediaRef, Player, Question, Question
 // посреди вечера. Ничего не выдумываем: пустой вопрос остаётся пустым, его покажет «Проверка игры».
 
 import { cleanClip } from './clip'
+import { cleanSpecial } from './special'
 
 type Raw = Record<string, unknown>
 
@@ -111,6 +112,10 @@ function question(v: Raw): Question {
   if (v.hidden === true) q.hidden = true
   const t = tree(v.tree)
   if (t) q.tree = t
+  const special = isObject(v.special)
+    ? cleanSpecial({ correct: maybeNumber(v.special.correct), wrong: maybeNumber(v.special.wrong), forAll: v.special.forAll === true })
+    : undefined
+  if (special) q.special = special
   return q
 }
 

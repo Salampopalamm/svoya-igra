@@ -17,6 +17,7 @@ import type { QuestionTree } from '../types'
 import { roundById } from '../game'
 import { CHANNEL, hallMouseOn, type HallAction, type HallStatus, type LiveState, type Message } from '../live'
 import { usePreload } from '../preload'
+import { specialTitle } from '../special'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
@@ -165,7 +166,7 @@ export default function ScreenApp() {
     category && question ? (
       <VideoContext.Provider value={{ video: live.video ?? null, onBlocked: soundBlocked }}>
         <ScreenQuestion
-          title={final ? `Финал · ${category.title}` : undefined}
+          title={final ? `Финал · ${category.title}` : (specialTitle(question) ?? undefined)}
           question={question}
           slideIndex={slideIndex}
           showAnswer={showAnswer}
