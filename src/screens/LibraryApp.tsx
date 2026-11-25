@@ -72,16 +72,17 @@ export default function LibraryApp() {
   // Открыть файл игры (.zip): игра со всеми картинками и музыкой появится в списке
   async function openFile(file: File | undefined) {
     if (!file) return
-    // Файл открывается целиком в памяти: очень большой может не открыться на слабом ноутбуке
-    if (file.size > BIG_ZIP && !window.confirm(`«${file.name}» — ${formatSize(file.size)}. Такой большой файл открывается долго, а на слабом ноутбуке может не открыться. Открыть?`)) return
     setMessage(null)
-    setBusy(`Открываю «${file.name}» (${formatSize(file.size)})…`)
+    // Файл открывается целиком в памяти: большой — открываем всё равно, но предупреждаем, что это долго
+    const big = file.size > BIG_ZIP
+    setBusy(`Открываю «${file.name}» (${formatSize(file.size)})…${big ? ' Файл большой — это может занять несколько минут.' : ''}`)
     try {
       const game = await importGame(file)
       setMessage({ text: `Игра «${game.title}» добавлена.` })
       reload()
     } catch (e) {
-      setMessage({ text: e instanceof Error ? e.message : 'Не получилось открыть файл.', error: true })
+      const text = e instanceof Error ? e.message : 'Не получилось открыть файл.'
+      setMessage({ text: big ? `${text} Файл очень большой — попробуйте на компьютере помощнее или закройте другие вкладки.` : text, error: true })
     } finally {
       setBusy(null)
     }
@@ -90,11 +91,10 @@ export default function LibraryApp() {
   // Отправить файлом: скачать .zip со всей игрой, чтобы открыть его на другом ноутбуке
   async function sendFile(game: Game) {
     setMessage(null)
-    // Файл собирается целиком в памяти — большой игре предупреждаем заранее
+    // Файл собирается целиком в памяти. Сохранение не останавливаем — только предупреждаем, что большой файл соберётся не сразу
     const size = await mediaBytes(allMediaIds(game))
-    const big = `Файл игры получится около ${formatSize(size)} (почти всё — видео и музыка). Сборка займёт время, а на слабом ноутбуке может не удаться — тогда сожмите видео (программа HandBrake). Собрать?`
-    if (size > BIG_ZIP && !window.confirm(big)) return
-    setBusy(`Собираю файл «${game.title}» (около ${formatSize(size)})…`)
+    const big = size > BIG_ZIP
+    setBusy(`Собираю файл «${game.title}» (около ${formatSize(size)})…${big ? ' Файл большой — это может занять несколько минут.' : ''}`)
     try {
       const zip = await exportGame(game)
       const url = URL.createObjectURL(zip)
@@ -107,7 +107,10 @@ export default function LibraryApp() {
       setMessage({ text: `Файл «${exportFileName(game)}» (${formatSize(zip.size)}) сохранён в папку загрузок.` })
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch {
-      setMessage({ text: 'Не получилось собрать файл игры.', error: true })
+      const hint = big
+        ? ` Файл получается около ${formatSize(size)} — закройте другие вкладки и попробуйте снова или сожмите видео (программа HandBrake).`
+        : ''
+      setMessage({ text: `Не получилось собрать файл игры.${hint}`, error: true })
     } finally {
       setBusy(null)
     }
