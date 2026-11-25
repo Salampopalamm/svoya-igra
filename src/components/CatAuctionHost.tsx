@@ -35,6 +35,7 @@ type Props = {
   onCorrect: (teamId: string) => void
   onWrong: (teamId: string) => void
   onClose: () => void
+  pointsOf: (teamId: string) => { plus: number; minus: number } // за верный и неверный ответ (ставка или цена кота, минус подсказки)
 }
 
 const keyNumber = (game: Game, team: Team) => {
@@ -127,7 +128,7 @@ export default function CatAuctionHost(props: Props) {
 }
 
 // Вопрос кота или аукциона идёт: отвечают получатель кота или команды со ставкой (по кругу)
-function Answering({ game, question, turnTeamId, answeringTeamId, triedTeamIds, cat, auction, nextTurnTeamName, onSelectTeam, onCorrect, onWrong, onClose }: Props) {
+function Answering({ game, question, turnTeamId, answeringTeamId, triedTeamIds, cat, auction, nextTurnTeamName, onSelectTeam, onCorrect, onWrong, onClose, pointsOf }: Props) {
   const teams = cat
     ? game.teams.filter((t) => t.id === cat.teamId)
     : auction
@@ -175,14 +176,14 @@ function Answering({ game, question, turnTeamId, answeringTeamId, triedTeamIds, 
                 <span className="ml-auto text-sm font-normal text-muted">{cat ? `цена ${points(team)}` : `ставка ${points(team)}`}</span>
               </button>
               {tried ? (
-                <div className="flex h-11 items-center text-muted">Ошиблись −{points(team)}</div>
+                <div className="flex h-11 items-center text-muted">Ошиблись −{pointsOf(team.id).minus}</div>
               ) : isAnswering ? (
                 <div className="flex gap-2">
                   <button type="button" onClick={() => onCorrect(team.id)} className="h-11 flex-1 rounded-lg bg-white font-semibold text-black hover:opacity-90">
-                    Верно +{points(team)}
+                    Верно +{pointsOf(team.id).plus}
                   </button>
                   <button type="button" onClick={() => onWrong(team.id)} className="h-11 flex-1 rounded-lg border border-white hover:bg-cell">
-                    Неверно −{points(team)}
+                    Неверно −{pointsOf(team.id).minus}
                   </button>
                 </div>
               ) : (

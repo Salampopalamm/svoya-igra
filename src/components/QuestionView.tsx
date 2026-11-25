@@ -3,7 +3,7 @@ import { formatTime, type TimerState } from '../live'
 import type { Content, Question, Team } from '../types'
 import { useTimeLeft } from '../useTimeLeft'
 import { plural } from '../plural'
-import { correctPoints, specialParts, wrongPoints } from '../special'
+import { specialParts } from '../special'
 import { ContentMedia, SlideView } from './MediaView'
 import TeamIcon from './TeamIcon'
 
@@ -36,6 +36,8 @@ type Props = {
   branch?: { body: ReactNode; bottom: ReactNode } // ветвящийся вопрос: вместо слайдов — текущий шаг, внизу — варианты
   forAll?: ReactNode // вопрос «для всех команд»: внизу вместо команд по очереди — отметки каждой (AllAnswers)
   catAuction?: ReactNode // «Кот в мешке» или аукцион: внизу — кому отдать, ставки, потом ответ (CatAuctionHost)
+  points: { plus: number; minus: number } // сколько за верный и неверный ответ (с учётом особых настроек и подсказок)
+  hints?: ReactNode // подсказки для зала (HintsHost) — под ответом
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -210,6 +212,8 @@ export default function QuestionView({
   branch,
   forAll,
   catAuction,
+  points,
+  hints,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -220,8 +224,7 @@ export default function QuestionView({
   const answeringTeam = teams.find((t) => t.id === answeringTeamId)
   const allTried = teams.length > 0 && teams.every((t) => triedTeamIds.includes(t.id))
   const triedNames = teams.filter((t) => triedTeamIds.includes(t.id)).map((t) => `«${t.name}»`)
-  const plus = correctPoints(question)
-  const minus = wrongPoints(question)
+  const { plus, minus } = points
   const special = specialParts(question) // ×2, без минуса, для всех команд
   const waitingSteal = stealing && !answeringTeam && !allTried // ошиблись, ждём, возьмётся ли кто-то перехватить
   const status = allTried
@@ -305,6 +308,7 @@ export default function QuestionView({
           </button>
         )}
       </div>
+      {hints}
         </>
       )}
 

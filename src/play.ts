@@ -1,6 +1,7 @@
 import { auctionStartProblem, catValue, isAuction, isCat, nextBidder, validBets, type AuctionState, type CatState } from './catAuction'
 import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes, removeTheme, withFinalScores } from './final'
 import { hiddenQuestions, nextTeamId, roundById } from './game'
+import { hintPenalty, hintsOf } from './hints'
 import { withLog } from './log'
 import { newTimer, pauseTimer, startTimer, type Current, type FinalState, type LiveState } from './live'
 import { describeRule, needsTeam, targetTeam } from './rules'
@@ -130,6 +131,7 @@ export function openedQuestion(question: Question | undefined, theme: Theme): Pa
     marks: {},
     cat: null,
     auction: null,
+    hint: null,
   }
 }
 
@@ -172,6 +174,7 @@ export function withClosed(s: LiveState): LiveState {
     marks: {},
     cat: null,
     auction: null,
+    hint: null,
   }
 }
 
@@ -221,24 +224,53 @@ export function auctionStart(s: LiveState): LiveState {
 }
 
 // Сколько команда получит за верный ответ и потеряет за неверный (число без минуса):
-// у кота — его цена, на аукционе — ставка команды, у особого вопроса — ×2, ×3, без минуса
+// у кота — его цена, на аукционе — ставка команды, у особого вопроса — ×2, ×3, без минуса.
+// Показанные платные подсказки уменьшают то, что дают за верный ответ (не ниже нуля); минус — как был.
 export function answerPoints(s: LiveState, teamId: string | null): { plus: number; minus: number } {
   const question = openQuestion(s)
   if (!question) return { plus: 0, minus: 0 }
-  if (catNow(s)) return { plus: catValue(question), minus: catValue(question) }
+  const penalty = s.viewOnly ? 0 : hintPenalty(question, s.hint?.shown ?? 0)
+  const result = (plus: number, minus: number) => ({ plus: Math.max(0, plus - penalty), minus })
+  if (catNow(s)) return result(catValue(question), catValue(question))
   const auction = auctionNow(s)
   if (auction) {
     const bet = (teamId && auction.bets[teamId]) || 0
-    return { plus: bet, minus: bet }
+    return result(bet, bet)
   }
-  return { plus: correctPoints(question), minus: wrongPoints(question) }
+  return result(correctPoints(question), wrongPoints(question))
 }
 
-// Подпись в журнале: «кот в мешке», «аукцион, ставка 500»
-function catAuctionNote(s: LiveState, teamId: string): { note?: string } {
-  if (catNow(s)) return { note: 'кот в мешке' }
+// Подпись в журнале: «кот в мешке», «аукцион, ставка 500», «подсказок: 2, −200»
+function answerNote(s: LiveState, teamId: string): { note?: string } {
+  const parts: string[] = []
+  if (catNow(s)) parts.push('кот в мешке')
   const auction = auctionNow(s)
-  return auction ? { note: `аукцион, ставка ${auction.bets[teamId] ?? 0}` } : {}
+  if (auction) parts.push(`аукцион, ставка ${auction.bets[teamId] ?? 0}`)
+  const question = openQuestion(s)
+  const shown = s.hint?.shown ?? 0
+  if (question && shown > 0) {
+    const penalty = hintPenalty(question, shown)
+    parts.push(`подсказок: ${shown}${penalty ? `, −${penalty} за верный` : ''}`)
+  }
+  return parts.length ? { note: parts.join('; ') } : {}
+}
+
+// ---- Подсказки (hints.ts) ----
+
+// Показать подсказку в зале. Следующая по порядку считается показанной (за неё снимаются баллы,
+// если подсказки платные); уже показанную можно вывести снова бесплатно. Пропускать подсказки нельзя.
+export function showHint(s: LiveState, index: number): LiveState {
+  const question = openQuestion(s)
+  const count = hintsOf(question).length
+  const shown = s.hint?.shown ?? 0
+  if (!question || finalOf(s) || index < 0 || index >= count || index > shown) return s
+  if (s.hint?.open === index) return s
+  return { ...s, hint: { shown: Math.max(shown, index + 1), open: index } }
+}
+
+// Убрать подсказку из зала (показанной она остаётся)
+export function hideHint(s: LiveState): LiveState {
+  return s.hint && s.hint.open !== null ? { ...s, hint: { ...s.hint, open: null } } : s
 }
 
 // ---- Ответ ----
@@ -261,7 +293,7 @@ export function answerCorrect(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
   const points = answerPoints(s, teamId).plus
-  const entry = { kind: 'correct' as const, teamId, points, ...aboutCurrent(s), ...catAuctionNote(s, teamId) }
+  const entry = { kind: 'correct' as const, teamId, points, ...aboutCurrent(s), ...answerNote(s, teamId) }
   return withClosed(withLog(withScore(s, teamId, points), entry))
 }
 
@@ -279,7 +311,7 @@ export function answerWrong(s: LiveState, teamId: string): LiveState {
   const question = canAnswer(s, teamId)
   if (!question) return s
   const points = 0 - answerPoints(s, teamId).minus || 0 // «|| 0» — без «−0» у вопроса без минуса
-  const entry = { kind: 'wrong' as const, teamId, points, ...aboutCurrent(s), ...catAuctionNote(s, teamId) }
+  const entry = { kind: 'wrong' as const, teamId, points, ...aboutCurrent(s), ...answerNote(s, teamId) }
   const scored = withLog(withScore(s, teamId, points), entry)
   const triedTeamIds = [...s.triedTeamIds, teamId]
   const auction = auctionNow(s)
@@ -320,12 +352,12 @@ export function revealAll(s: LiveState): LiveState {
   let next = s
   for (const team of marked) {
     const correct = marks[team.id]
-    const points = correct ? correctPoints(question) : 0 - wrongPoints(question) || 0
+    const points = correct ? answerPoints(s, team.id).plus : 0 - answerPoints(s, team.id).minus || 0
     next = withLog(withScore(next, team.id, points), {
       kind: correct ? 'correct' : 'wrong',
       teamId: team.id,
       points,
-      note: 'все команды',
+      note: ['все команды', answerNote(s, team.id).note].filter(Boolean).join('; '),
       ...aboutCurrent(s),
     })
   }
@@ -381,7 +413,7 @@ export function goToSlide(s: LiveState, delta: number): LiveState {
 
 // Ответ в зале — таймер больше не нужен, останавливаем
 export function showAnswer(s: LiveState): LiveState {
-  return { ...s, showAnswer: true, timer: s.timer && pauseTimer(s.timer) }
+  return { ...s, showAnswer: true, timer: s.timer && pauseTimer(s.timer), hint: s.hint && { ...s.hint, open: null } }
 }
 
 // Таймер: запустить / пауза. Если таймера у вопроса нет — запускаем на стандартное (или закреплённое) время.

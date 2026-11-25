@@ -21,6 +21,8 @@ import { specialTitle } from '../special'
 import { answerOrder } from '../catAuction'
 import { answerPoints, auctionNow, catNow } from '../play'
 import CatAuctionScreen from '../components/CatAuctionScreen'
+import HintPopup from '../components/HintPopup'
+import { hintsOf } from '../hints'
 import type { Theme } from '../types'
 import { VideoContext } from '../videoControl'
 
@@ -137,6 +139,8 @@ export default function ScreenApp() {
   // ошибившиеся — бледные; в финале — кто убирает тему
   const activeTeamId = final ? (finalRemover?.id ?? null) : questionOpen && !intro ? answeringTeamId : (turnTeam?.id ?? null)
   const activeLabel = final ? 'УБИРАЕТ' : questionOpen && !intro ? (stealing && !catState && !auctionState ? 'ПЕРЕХВАТ' : 'ОТВЕЧАЕТ') : 'ХОД'
+  // Подсказка, которую ведущий сейчас вывел в зал
+  const openHint = live.hint?.open != null ? hintsOf(question)[live.hint.open] : undefined
   // Над вопросом аукциона — кто отвечает и его ставка
   const auctionBet = auctionState && answeringTeam ? auctionState.bets[answeringTeam.id] : undefined
   const questionTitle = auctionBet ? `Аукцион · ${answeringTeam!.name} · ставка ${auctionBet}` : question ? specialTitle(question) : null
@@ -234,6 +238,8 @@ export default function ScreenApp() {
       }
     >
       <HallFrame theme={game.theme} className="flex flex-col gap-6 px-12 py-10">
+        {/* Подсказка к вопросу: всплывает поверх вопроса, пока ведущий её не уберёт */}
+        {question && !intro && openHint && <HintPopup hint={openHint} index={live.hint!.open!} />}
         {/* Правило «ЕСЛИ → ТО» показало надпись: во весь экран поверх табло, пока ведущий не уберёт */}
         {live.shownText && (
           <div key={live.shownText} className="anim-appear fixed inset-0 z-40 flex items-center justify-center bg-bg p-16 text-center">

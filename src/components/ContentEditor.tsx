@@ -63,7 +63,7 @@ export function SmallButton({ onClick, disabled, label, children }: {
 }
 
 // Текст + файл: один слайд или ответ. Файл можно выбрать кнопкой или перетащить мышкой.
-export function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved, onArrange }: {
+export function ContentEditor({ content, textLabel, placeholder, warning, onChange, onMediaRemoved, onArrange, imagesOnly }: {
   content: Content
   textLabel: string
   placeholder: string
@@ -71,6 +71,7 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
   onChange: (change: (c: Content) => Content) => void
   onMediaRemoved: (mediaId: string) => void
   onArrange?: () => void // открыть предпросмотр и расставить текст и картинки самому
+  imagesOnly?: boolean // только картинки (подсказка): музыку и видео не берём
 }) {
   const [busy, setBusy] = useState(false) // файл сейчас сохраняется
   const [error, setError] = useState<string | null>(null)
@@ -86,6 +87,7 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
     setBusy(true)
     try {
       const [first, ...rest] = files
+      if (imagesOnly && !first.type.startsWith('image/')) throw new Error('Сюда можно только картинку — музыку и видео ставьте в слайды вопроса.')
       if (content.more?.length && !first.type.startsWith('image/')) {
         throw new Error('На слайде несколько картинок — заменить первую можно только картинкой.')
       }
@@ -233,10 +235,10 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
 
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex h-11 cursor-pointer items-center rounded-lg border border-line px-4 text-sm hover:bg-cell focus-within:border-white">
-          {busy ? 'Сохраняю файл…' : media ? (pictures.length > 1 ? 'Заменить первую' : 'Заменить файл') : '+ Картинка, музыка или видео'}
+          {busy ? 'Сохраняю файл…' : media ? (pictures.length > 1 ? 'Заменить первую' : 'Заменить файл') : imagesOnly ? '+ Картинка' : '+ Картинка, музыка или видео'}
           <input
             type="file"
-            accept="image/*,audio/*,video/*"
+            accept={imagesOnly ? 'image/*' : 'image/*,audio/*,video/*'}
             multiple={!content.more?.length}
             disabled={busy}
             className="sr-only"

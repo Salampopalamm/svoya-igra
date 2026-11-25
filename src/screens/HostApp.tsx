@@ -41,8 +41,13 @@ import { hostKey, typingInField } from '../hostKeys'
 import { usePreload } from '../preload'
 import { isForAll } from '../special'
 import CatAuctionHost from '../components/CatAuctionHost'
+import HintsHost from '../components/HintsHost'
+import { hintsOf } from '../hints'
 import {
   answerCorrect,
+  answerPoints,
+  hideHint,
+  showHint,
   answerWrong,
   auctionNow,
   auctionSetBet,
@@ -387,6 +392,15 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
   function startAuction() {
     commit(auctionStart(live))
+  }
+
+  // Подсказка в зал: первый показ — шаг игры (может снять баллы), Ctrl+Z его отменит
+  function showHintInHall(index: number) {
+    commit(showHint(live, index))
+  }
+
+  function hideHintInHall() {
+    setLive((s) => hideHint(s))
   }
 
   // Ведущий передал ход другой команде — отменяется через Ctrl+Z
@@ -1016,7 +1030,7 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
             forAll={
               isForAll(currentCell.question) ? (
                 <AllAnswers
-                  question={currentCell.question}
+                  points={answerPoints(live, null)}
                   teams={game.teams}
                   marks={live.marks ?? {}}
                   onMark={markAll}
@@ -1043,6 +1057,19 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
                   onCorrect={handleCorrect}
                   onWrong={handleWrong}
                   onClose={closeQuestion}
+                  pointsOf={(teamId) => answerPoints(live, teamId)}
+                />
+              ) : undefined
+            }
+            points={answerPoints(live, answeringTeamId)}
+            hints={
+              hintsOf(currentCell.question).length > 0 && !final ? (
+                <HintsHost
+                  hints={hintsOf(currentCell.question)}
+                  hint={live.hint ?? null}
+                  cost={live.viewOnly ? 0 : (currentCell.question.hintCost ?? 0)}
+                  onShow={showHintInHall}
+                  onHide={hideHintInHall}
                 />
               ) : undefined
             }

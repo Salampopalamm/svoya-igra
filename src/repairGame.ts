@@ -7,6 +7,7 @@ import type { Box, Category, Content, Game, MediaRef, Player, Question, Question
 import { cleanClip } from './clip'
 import { cleanSpecial } from './special'
 import { cleanCat } from './catAuction'
+import { cleanHintCost, MAX_HINTS } from './hints'
 
 type Raw = Record<string, unknown>
 
@@ -120,6 +121,10 @@ function question(v: Raw): Question {
   const catSettings = isObject(v.cat) ? cleanCat(v.cat) : undefined
   if (catSettings) q.cat = catSettings
   if (v.auction === 'all' || v.auction === 'turn') q.auction = v.auction
+  const hints = list(v.hints).map(content).slice(0, MAX_HINTS)
+  if (hints.length) q.hints = hints
+  const hintCost = cleanHintCost(v.hintCost)
+  if (hintCost) q.hintCost = hintCost
   return q
 }
 

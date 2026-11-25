@@ -141,7 +141,7 @@ export function sortByValue(questions: Question[]): Question[] {
 
 // Всё содержимое вопроса: слайды, ответ и шаги дерева (если вопрос ветвящийся)
 export function questionContents(question: Question): Content[] {
-  return [...question.slides, question.answer, ...treeContents(question.tree)]
+  return [...question.slides, question.answer, ...treeContents(question.tree), ...(question.hints ?? [])]
 }
 
 // id всех файлов вопроса — чтобы удалить их из хранилища вместе с вопросом

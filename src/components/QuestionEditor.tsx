@@ -5,6 +5,7 @@ import { newTree, treeContents } from '../tree'
 import { cleanSpecial, MULTIPLIERS, specialParts, specialTitle } from '../special'
 import type { Content, Question, Special } from '../types'
 import { catValue, cleanCat } from '../catAuction'
+import { defaultHintCost, MAX_HINTS } from '../hints'
 
 // Вид вопроса в редакторе: обычный, кот, аукцион или ветвящийся (дерево)
 type QuestionKind = Question['kind'] | 'tree'
@@ -280,6 +281,9 @@ export default function QuestionEditor({
               onArrange={() => onPreview({ answer: true, arrange: true })}
             />
           </section>
+
+          {/* Подсказки для зала (в финале их нет — там свои ставки) */}
+          {canHide && <HintsEditor question={question} onChange={onChange} onMediaRemoved={onMediaRemoved} />}
         </>
       )}
 
@@ -430,5 +434,117 @@ function CatAuctionEditor({ question, onChange }: { question: Question; onChange
         На табло — обычная ячейка (сюрприз).
       </p>
     </fieldset>
+  )
+}
+
+// Подсказки для зала: до трёх, текст и/или картинки. Ведущий выводит их в зал по кнопке, по порядку.
+// Автор решает, снимать ли за них баллы (hints.ts)
+function HintsEditor({ question, onChange, onMediaRemoved }: {
+  question: Question
+  onChange: (change: (q: Question) => Question) => void
+  onMediaRemoved: (mediaId: string) => void
+}) {
+  const hints = question.hints ?? []
+  const cost = question.hintCost
+  const [costText, setCostText] = useState(cost ? String(cost) : '')
+  const chip = (on: boolean) => `h-11 rounded-lg px-4 text-sm ${on ? 'bg-white font-semibold text-black' : 'border border-line hover:bg-bg'}`
+
+  const setHints = (change: (list: Content[]) => Content[]) =>
+    onChange((q) => {
+      const list = change(q.hints ?? [])
+      const next: Question = { ...q, hints: list }
+      if (!list.length) {
+        delete next.hints
+        delete next.hintCost
+      }
+      return next
+    })
+
+  function removeHint(index: number) {
+    const files = hints[index] ? contentMedia(hints[index]) : []
+    setHints((list) => list.filter((_, i) => i !== index))
+    for (const m of files) onMediaRemoved(m.id)
+  }
+
+  function setCost(value: number | undefined) {
+    onChange((q) => {
+      const next = { ...q }
+      if (value) next.hintCost = value
+      else delete next.hintCost
+      return next
+    })
+  }
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl border border-line p-4">
+      <h3 className="text-sm font-semibold tracking-widest text-muted">💡 ПОДСКАЗКИ ДЛЯ ЗАЛА · ВЕДУЩИЙ ПОКАЗЫВАЕТ ПО КНОПКЕ</h3>
+      {hints.map((hint, i) => (
+        <div key={i} className="flex flex-col gap-3 rounded-lg border border-line bg-bg p-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-semibold">Подсказка {i + 1}</span>
+            <button type="button" onClick={() => removeHint(i)} className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell">
+              Удалить подсказку
+            </button>
+          </div>
+          <ContentEditor
+            content={hint}
+            textLabel={`Текст подсказки ${i + 1}`}
+            placeholder="Например: «Это фильм 1975 года»"
+            imagesOnly
+            onChange={(change) => setHints((list) => list.map((h, j) => (j === i ? change(h) : h)))}
+            onMediaRemoved={onMediaRemoved}
+          />
+        </div>
+      ))}
+      {hints.length < MAX_HINTS && (
+        <button type="button" onClick={() => setHints((list) => [...list, {}])} className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell">
+          + Добавить подсказку{hints.length ? '' : ' (до трёх)'}
+        </button>
+      )}
+      {hints.length > 0 && (
+        <>
+          <div role="group" aria-label="Баллы за подсказку" className="flex flex-wrap items-center gap-2">
+            <span className="w-44 text-sm text-muted">Баллы за подсказку</span>
+            <button type="button" onClick={() => setCost(undefined)} aria-pressed={!cost} className={chip(!cost)}>
+              не снимать
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const value = cost ?? defaultHintCost(question.value)
+                setCostText(String(value))
+                setCost(value)
+              }}
+              aria-pressed={!!cost}
+              className={chip(!!cost)}
+            >
+              снимать
+            </button>
+            {!!cost && (
+              <label className="flex items-center gap-2">
+                <input
+                  inputMode="numeric"
+                  value={costText}
+                  onChange={(e) => {
+                    setCostText(e.target.value)
+                    const n = Number(e.target.value.trim())
+                    if (Number.isInteger(n) && n > 0) setCost(n)
+                  }}
+                  aria-label="Сколько баллов снимать за каждую подсказку"
+                  className="h-11 w-24 rounded-lg border border-line bg-bg px-3 text-white focus:border-white focus:outline-none"
+                />
+                <span className="text-sm text-muted">за каждую</span>
+              </label>
+            )}
+          </div>
+          <p className="text-sm text-muted">
+            {cost
+              ? `После каждой показанной подсказки за верный ответ дают на ${cost} меньше (с одной подсказкой — ${Math.max(0, question.value - cost)} вместо ${question.value}, не меньше нуля). Минус за неверный ответ не меняется.`
+              : 'Подсказки бесплатные: счёт от них не меняется.'}{' '}
+            Ведущий показывает их по порядку; подсказка всплывает в зале поверх вопроса.
+          </p>
+        </>
+      )}
+    </section>
   )
 }

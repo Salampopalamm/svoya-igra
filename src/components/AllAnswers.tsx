@@ -1,12 +1,11 @@
-import { correctPoints, wrongPoints } from '../special'
-import type { Question, Team } from '../types'
+import type { Team } from '../types'
 import TeamIcon from './TeamIcon'
 
 // Вопрос «для всех команд» на пульте: каждая команда пишет ответ (на бумажке), ведущий отмечает верно / неверно.
 // Без отметки — команда не ответила, счёт не меняется. «Подвести итог» начисляет баллы и закрывает вопрос.
 
 type Props = {
-  question: Question
+  points: { plus: number; minus: number } // за верный и неверный ответ (с учётом особых настроек и подсказок)
   teams: Team[]
   marks: Record<string, boolean>
   onMark: (teamId: string, correct: boolean) => void
@@ -14,9 +13,8 @@ type Props = {
   onClose: () => void
 }
 
-export default function AllAnswers({ question, teams, marks, onMark, onReveal, onClose }: Props) {
-  const plus = correctPoints(question)
-  const minus = wrongPoints(question)
+export default function AllAnswers({ points, teams, marks, onMark, onReveal, onClose }: Props) {
+  const { plus, minus } = points
   const marked = teams.filter((t) => marks[t.id] !== undefined).length
   return (
     <div className="mt-auto flex flex-col gap-3">

@@ -2,6 +2,7 @@ import { APP_KEY } from './site'
 import type { LogEntry } from './log'
 import type { BranchState } from './tree'
 import type { AuctionState, CatState } from './catAuction'
+import type { HintState } from './hints'
 import type { Game, HallSizes, MediaRef, PlaceTarget, Placement } from './types'
 
 // «Живое» состояние игры, которое пульт передаёт экрану зала.
@@ -35,6 +36,7 @@ export type LiveState = {
   log?: LogEntry[] // журнал партии: кто, за что и сколько получил (log.ts)
   cat?: CatState | null // открыт «Кот в мешке»: кому его отдали (функции — catAuction.ts)
   auction?: AuctionState | null // открыт аукцион: ставки команд, идут ли ещё торги
+  hint?: HintState | null // подсказки открытого вопроса: сколько показали, какая сейчас в зале (hints.ts)
   marks?: Record<string, boolean> // вопрос «для всех команд»: кто ответил верно / неверно (отмечает ведущий; нет отметки — не ответили)
 }
 
