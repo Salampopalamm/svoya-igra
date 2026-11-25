@@ -46,9 +46,32 @@ jobs:
         with:
           ref: dev
           path: dev
+      # Тестовый сайт не собрался или его проверки не прошли — основной сайт всё равно публикуется
+      # (continue-on-error), а по адресу /dev/ будет страница-заглушка (следующий шаг)
       - if: steps.dev.outputs.exists == 'true'
+        id: devbuild
+        continue-on-error: true
         run: npm ci && npm run test --if-present && npm run build:dev && mkdir -p ../main/dist/dev && cp -r dist-dev/. ../main/dist/dev/
         working-directory: dev
+      - if: steps.devbuild.outcome == 'failure'
+        run: |
+          echo "::warning title=Тестовый сайт не собрался::Ветка dev не собралась или не прошла проверки (npm test). Основной сайт опубликован, на /dev/ — заглушка. Подробности — в шаге выше."
+          rm -rf main/dist/dev && mkdir -p main/dist/dev
+          cat > main/dist/dev/index.html <<'HTML'
+          <!doctype html>
+          <html lang="ru">
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1">
+          <title>DEV · Своя игра</title>
+          <body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#26272B;color:#fff;font:18px/1.5 system-ui,sans-serif;text-align:center;padding:24px">
+            <div>
+              <h1 style="font-size:24px">Тестовая версия сейчас не собралась</h1>
+              <p style="color:#C4C6CC">Её чинят. Игры на тестовом сайте не пропали — они хранятся в вашем браузере.<br>
+              Основной сайт работает: <a style="color:#fff" href="../">salampopalamm.github.io/svoya-igra</a></p>
+            </div>
+          </body>
+          </html>
+          HTML
 
       - uses: actions/upload-pages-artifact@v4
         with:
