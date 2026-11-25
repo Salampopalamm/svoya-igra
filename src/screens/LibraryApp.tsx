@@ -1,9 +1,21 @@
 import { useEffect, useState } from 'react'
-import { deleteGame, deleteMediaIfUnused, listGames, protectStorage, saveGame, storageUsed } from '../db'
+import {
+  deleteGame,
+  deleteMediaFiles,
+  deleteMediaIfUnused,
+  findUnusedMedia,
+  listGames,
+  mediaBytes,
+  protectStorage,
+  saveGame,
+  storageUsed,
+} from '../db'
 import { allMediaIds, copyGame } from '../game'
 import { exportedAt, exportFileName, exportGame, importGame, markExported } from '../gameFile'
 import { clearRehearsal, clearState, hasSavedState } from '../live'
 import type { Game } from '../types'
+
+const BIG_ZIP = 500 * 1024 * 1024 // файл игры больше — предупреждаем: собирается и открывается целиком в памяти
 
 // Стартовый экран «Мои игры»: создать игру, открыть файл, список своих игр.
 export default function LibraryApp() {
@@ -21,9 +33,21 @@ export default function LibraryApp() {
   useEffect(() => {
     void protectStorage().then(setSafe)
   }, [])
+  // Ненужные файлы (ни в одной игре и ни в черновике) — можно убрать одной кнопкой
+  const [unused, setUnused] = useState<{ ids: string[]; bytes: number } | null>(null)
   useEffect(() => {
     void storageUsed().then(setUsed)
+    void findUnusedMedia().then(setUnused)
   }, [games])
+
+  async function removeUnused() {
+    if (!unused?.ids.length) return
+    const text = `Убрать ${unused.ids.length} файл(ов), ${formatSize(unused.bytes)}? Они не используются ни в одной игре и ни в черновике «Быстрой игры».`
+    if (!window.confirm(text)) return
+    await deleteMediaFiles(unused.ids)
+    setMessage({ text: `Убрано: ${formatSize(unused.bytes)}.` })
+    reload()
+  }
   const [exported, setExported] = useState(exportedAt) // когда какую игру сохраняли файлом
 
   async function remove(game: Game) {
@@ -48,8 +72,10 @@ export default function LibraryApp() {
   // Открыть файл игры (.zip): игра со всеми картинками и музыкой появится в списке
   async function openFile(file: File | undefined) {
     if (!file) return
+    // Файл открывается целиком в памяти: очень большой может не открыться на слабом ноутбуке
+    if (file.size > BIG_ZIP && !window.confirm(`«${file.name}» — ${formatSize(file.size)}. Такой большой файл открывается долго, а на слабом ноутбуке может не открыться. Открыть?`)) return
     setMessage(null)
-    setBusy(`Открываю «${file.name}»…`)
+    setBusy(`Открываю «${file.name}» (${formatSize(file.size)})…`)
     try {
       const game = await importGame(file)
       setMessage({ text: `Игра «${game.title}» добавлена.` })
@@ -64,15 +90,21 @@ export default function LibraryApp() {
   // Отправить файлом: скачать .zip со всей игрой, чтобы открыть его на другом ноутбуке
   async function sendFile(game: Game) {
     setMessage(null)
-    setBusy(`Собираю файл «${game.title}»…`)
+    // Файл собирается целиком в памяти — большой игре предупреждаем заранее
+    const size = await mediaBytes(allMediaIds(game))
+    const big = `Файл игры получится около ${formatSize(size)} (почти всё — видео и музыка). Сборка займёт время, а на слабом ноутбуке может не удаться — тогда сожмите видео (программа HandBrake). Собрать?`
+    if (size > BIG_ZIP && !window.confirm(big)) return
+    setBusy(`Собираю файл «${game.title}» (около ${formatSize(size)})…`)
     try {
-      const url = URL.createObjectURL(await exportGame(game))
+      const zip = await exportGame(game)
+      const url = URL.createObjectURL(zip)
       const link = document.createElement('a')
       link.href = url
       link.download = exportFileName(game)
       link.click()
       markExported(game.id)
       setExported(exportedAt())
+      setMessage({ text: `Файл «${exportFileName(game)}» (${formatSize(zip.size)}) сохранён в папку загрузок.` })
       setTimeout(() => URL.revokeObjectURL(url), 10_000)
     } catch {
       setMessage({ text: 'Не получилось собрать файл игры.', error: true })
@@ -213,6 +245,15 @@ export default function LibraryApp() {
           Игры хранятся в этом браузере. Чтобы перенести игру на другой ноутбук, нажмите «Отправить файлом» и откройте
           этот файл там.
         </p>
+        {unused && unused.ids.length > 0 && (
+          <button
+            type="button"
+            onClick={removeUnused}
+            className="h-11 self-start rounded-lg border border-line px-4 text-sm hover:bg-cell"
+          >
+            Убрать ненужные файлы · {unused.ids.length} · {formatSize(unused.bytes)}
+          </button>
+        )}
       </section>
     </div>
   )

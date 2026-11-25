@@ -3,6 +3,8 @@ import Dexie, { type EntityTable } from 'dexie'
 import { demoGame } from './data/demoGame'
 import { demoMediaFiles } from './data/demoMedia'
 import { repairGame } from './repairGame'
+import { shrinkImage } from './shrinkImage'
+import { DRAFT_KEY } from './wizard'
 import type { Content, Game, MediaFile, MediaRef, MediaType, Question } from './types'
 
 // Хранилище в браузере (IndexedDB через библиотеку Dexie):
@@ -142,9 +144,11 @@ function mediaTypeOf(file: File): MediaType | null {
 
 // Положить файл с компьютера в хранилище. Возвращает ссылку, которую сохраняем в игре.
 // Если файл не подходит — ошибка с понятным текстом для пользователя.
-export async function addMediaFile(file: File): Promise<MediaRef> {
-  const type = mediaTypeOf(file)
-  if (!type) throw new Error(`«${file.name}» — не картинка, не музыка и не видео. Такой файл добавить нельзя.`)
+// Большие картинки сначала уменьшаем (shrinkImage.ts) — так и огромное фото с телефона поместится в лимит.
+export async function addMediaFile(original: File): Promise<MediaRef> {
+  const type = mediaTypeOf(original)
+  if (!type) throw new Error(`«${original.name}» — не картинка, не музыка и не видео. Такой файл добавить нельзя.`)
+  const file = type === 'image' ? await shrinkImage(original) : original
   if (file.size > MAX_FILE_MB * 1024 * 1024) {
     throw new Error(
       `«${file.name}» больше ${MAX_FILE_MB} МБ. Сожмите файл (для видео подойдёт программа HandBrake) и попробуйте снова.`,
@@ -159,6 +163,37 @@ export async function addMediaFile(file: File): Promise<MediaRef> {
 export async function deleteMediaIfUnused(id: string) {
   const games = await db.games.toArray()
   if (!games.some((game) => JSON.stringify(game).includes(id))) await db.media.delete(id)
+}
+
+// Ненужные файлы: на них не ссылается ни одна игра и ни черновик «Быстрой игры».
+// Так бывает, если черновик бросили или браузер закрыли посреди правки. Место они занимают зря.
+export async function findUnusedMedia(): Promise<{ ids: string[]; bytes: number }> {
+  const games = await db.games.toArray()
+  let draft = ''
+  try {
+    draft = localStorage.getItem(DRAFT_KEY) ?? ''
+  } catch {
+    // хранилище недоступно — черновика нет
+  }
+  const used = JSON.stringify(games) + draft
+  const ids: string[] = []
+  let bytes = 0
+  await db.media.each((file) => {
+    if (used.includes(file.id)) return
+    ids.push(file.id)
+    bytes += file.blob?.size ?? 0
+  })
+  return { ids, bytes }
+}
+
+export function deleteMediaFiles(ids: string[]) {
+  return db.media.bulkDelete(ids)
+}
+
+// Сколько весят все файлы игры, байт (столько примерно и будет файл .zip)
+export async function mediaBytes(ids: string[]): Promise<number> {
+  const files = await db.media.bulkGet([...new Set(ids)])
+  return files.reduce((sum, f) => sum + (f?.blob?.size ?? 0), 0)
 }
 
 // ---- Сохранность хранилища ----

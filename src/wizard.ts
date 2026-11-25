@@ -194,7 +194,7 @@ export function gameFromDraft(draft: Draft): Game {
 
 // ---- Черновик в браузере: чтобы случайная перезагрузка не стёрла набранное ----
 
-const DRAFT_KEY = `${APP_KEY}:wizard`
+export const DRAFT_KEY = `${APP_KEY}:wizard`
 
 export function loadDraft(): Draft | null {
   try {
