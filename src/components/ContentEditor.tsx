@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react'
 import { addMediaFile, MAX_FILE_MB } from '../db'
 import { canAddPicture, columnsOf, contentMedia, layoutName, layoutOf, layoutsFor, MAX_PICTURES, withoutPicture } from '../pictures'
 import type { Content, MediaRef, PictureLayout } from '../types'
+import ClipEditor from './ClipEditor'
 import { ContentMedia, MediaView } from './MediaView'
 
 // Тянут что-то с этой же страницы (картинку, текст) — это не новый файл, такое отпускание не принимаем.
@@ -178,7 +179,11 @@ export function ContentEditor({ content, textLabel, placeholder, warning, onChan
         className={`w-full rounded-lg border bg-bg px-3 py-2 text-lg text-white focus:border-white focus:outline-none ${warning ? 'border-white placeholder:font-semibold placeholder:text-white' : 'border-line placeholder:text-muted/60'}`}
       />
 
-      {media && pictures.length === 1 && (
+      {media && pictures.length === 1 && (media.type === 'audio' || media.type === 'video') && (
+        // Музыка и видео: плеер и «играть фрагмент с … до …»
+        <ClipEditor media={media} onChange={(next) => onChange((c) => ({ ...c, media: next }))} />
+      )}
+      {media && pictures.length === 1 && media.type !== 'audio' && media.type !== 'video' && (
         <div className="flex flex-col gap-2">
           <MediaView media={media} mode="editor" className="max-h-64 self-start" />
           <span className="text-sm text-muted">{media.name}</span>

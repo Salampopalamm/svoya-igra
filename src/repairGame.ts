@@ -4,6 +4,8 @@ import type { Box, Category, Content, Game, MediaRef, Player, Question, Question
 // Всё, чего не хватает, заполняем безопасными значениями, мусор выбрасываем — чтобы игра не сломалась
 // посреди вечера. Ничего не выдумываем: пустой вопрос остаётся пустым, его покажет «Проверка игры».
 
+import { cleanClip } from './clip'
+
 type Raw = Record<string, unknown>
 
 const isObject = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -24,7 +26,11 @@ const MEDIA_TYPES = ['image', 'gif', 'video', 'audio'] as const
 
 function mediaRef(v: unknown): MediaRef | undefined {
   if (!isObject(v) || typeof v.id !== 'string' || !v.id) return undefined
-  return { id: v.id, type: oneOf(v.type, MEDIA_TYPES, 'image'), name: text(v.name, 'файл') }
+  const ref: MediaRef = { id: v.id, type: oneOf(v.type, MEDIA_TYPES, 'image'), name: text(v.name, 'файл') }
+  // Фрагмент — только у музыки и видео
+  const clip = isObject(v.clip) && (ref.type === 'audio' || ref.type === 'video') ? cleanClip({ start: maybeNumber(v.clip.start), end: maybeNumber(v.clip.end) }) : undefined
+  if (clip) ref.clip = clip
+  return ref
 }
 
 function content(v: unknown): Content {

@@ -1,4 +1,5 @@
 import { useRef, type CSSProperties } from 'react'
+import { clipStart, describeClip, outsideClip, useClip } from '../clip'
 import { columnsOf, contentMedia, layoutOf } from '../pictures'
 import type { Content, MediaRef } from '../types'
 import { useMediaUrl } from '../useMediaUrl'
@@ -25,14 +26,7 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
 
   if (media.type === 'audio') {
     if (mode === 'editor') return <audio src={file.url} controls className={`w-full ${className}`} />
-    if (mode === 'host') {
-      return (
-        <div className={`flex flex-col gap-2 ${className}`}>
-          <span className="text-sm text-muted">♪ {media.name} — звук идёт из этого окна</span>
-          <audio src={file.url} controls className="w-full" />
-        </div>
-      )
-    }
+    if (mode === 'host') return <HostAudio media={media} url={file.url} className={className} />
     return (
       <div className={`flex flex-col items-center justify-center gap-4 ${className}`}>
         <span className="text-9xl">♪</span>
@@ -47,11 +41,28 @@ export function MediaView({ media, mode, className = '' }: { media: MediaRef; mo
   return <video src={file.url} controls className={`rounded-lg ${className}`} />
 }
 
+// Музыка на пульте: играет отсюда; если задан фрагмент — только он
+function HostAudio({ media, url, className }: { media: MediaRef; url: string; className: string }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  useClip(ref, media.clip)
+  const clip = describeClip(media.clip)
+  return (
+    <div className={`flex flex-col gap-2 ${className}`}>
+      <span className="text-sm text-muted">
+        ♪ {media.name}
+        {clip && <strong className="text-white"> · фрагмент {clip}</strong>} — звук идёт из этого окна
+      </span>
+      <audio ref={ref} src={url} controls className="w-full" />
+    </div>
+  )
+}
+
 // Видео в зале: без кнопок, слушается пульта
 function HallVideo({ media, url, className }: { media: MediaRef; url: string; className: string }) {
   const ref = useRef<HTMLVideoElement>(null)
   const { video, onBlocked, freePlay } = useVideoControl()
   useFollowVideo(ref, video?.mediaId === media.id ? video : null, onBlocked)
+  useClip(ref, media.clip)
   return (
     <video
       data-media
@@ -73,11 +84,15 @@ function HostVideo({ media, url, className }: { media: MediaRef; url: string; cl
   const playing = mine?.playing ?? false
   const volume = mine?.volume ?? 1
   useFollowVideo(ref, mine)
-
   const now = () => ref.current?.currentTime ?? 0
+  // Фрагмент дошёл до конца — останавливаем и зал
+  useClip(ref, media.clip, () => send?.(media.id, { playing: false, time: media.clip?.end ?? now() }))
+  const clip = describeClip(media.clip)
+  // Запуск вне фрагмента — с его начала
+  const startAt = () => (outsideClip(media.clip, now()) ? clipStart(media.clip) : now())
 
   // Предпросмотр: управлять залом нельзя (предпросмотр в зал не попадает) — обычный плеер
-  if (!send) return <video src={url} controls className={`rounded-lg ${className}`} />
+  if (!send) return <video ref={ref} src={url} controls className={`rounded-lg ${className}`} />
 
   return (
     <div className={`flex flex-col gap-2 ${className}`}>
@@ -93,14 +108,14 @@ function HostVideo({ media, url, className }: { media: MediaRef; url: string; cl
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => send?.(media.id, { playing: !playing, time: now() })}
+          onClick={() => send?.(media.id, { playing: !playing, time: playing ? now() : startAt() })}
           className={`h-11 rounded-lg px-4 font-semibold ${playing ? 'border border-white hover:bg-cell' : 'bg-white text-black hover:opacity-90'}`}
         >
           {playing ? '⏸ Пауза' : '▶ Видео в зале'}
         </button>
         <button
           type="button"
-          onClick={() => send?.(media.id, { time: 0 })}
+          onClick={() => send?.(media.id, { time: clipStart(media.clip) })}
           className="h-11 rounded-lg border border-line px-4 text-sm hover:bg-cell"
         >
           ⟲ С начала
@@ -119,7 +134,10 @@ function HostVideo({ media, url, className }: { media: MediaRef; url: string; cl
           <span className="w-10 tabular-nums">{Math.round(volume * 100)}%</span>
         </label>
       </div>
-      <span className="text-sm text-muted">Звук видео идёт из окна зала, здесь — копия без звука</span>
+      <span className="text-sm text-muted">
+        {clip && <strong className="text-white">Фрагмент {clip}. </strong>}
+        Звук видео идёт из окна зала, здесь — копия без звука
+      </span>
     </div>
   )
 }

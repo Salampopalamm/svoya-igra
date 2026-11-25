@@ -3,7 +3,10 @@
 export type MediaType = 'image' | 'gif' | 'video' | 'audio'
 
 // Ссылка на файл. Сам файл лежит в отдельной таблице хранилища (MediaFile), в игре — только ссылка.
-export type MediaRef = { id: string; type: MediaType; name: string }
+export type MediaRef = { id: string; type: MediaType; name: string; clip?: Clip }
+
+// Фрагмент музыки или видео, секунды: играть «с 0:45 до 1:05». Пусто — весь файл (функции — clip.ts)
+export type Clip = { start?: number; end?: number }
 
 // Сам файл в хранилище браузера
 export type MediaFile = { id: string; type: MediaType; name: string; blob: Blob }
