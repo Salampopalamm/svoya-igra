@@ -223,7 +223,7 @@ export const TEAM_EMOJI = [
   '🍉', '☕', '🎸', '🎯', '🎲', '🏆', '💎', '👑', '🎩', '🧠',
 ]
 
-// Добавить команду в конец: «Команда N», где N — первый свободный номер
+// Добавить команду в конец: «Команда N», где N — её место в списке, а если такое имя занято — следующий свободный номер
 export function addTeam(game: Game): Game {
   if (game.teams.length >= MAX_TEAMS) return game
   const names = new Set(game.teams.map((t) => t.name))

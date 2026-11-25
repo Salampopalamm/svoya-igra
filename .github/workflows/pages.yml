@@ -34,7 +34,8 @@ jobs:
           node-version: 26
           cache: npm
           cache-dependency-path: main/package-lock.json
-      - run: npm ci && npm run build
+      # Автопроверки (npm test): не прошли — сайт не публикуется и остаётся прежним. Нет проверок в ветке — шаг пропускается
+      - run: npm ci && npm run test --if-present && npm run build
         working-directory: main
 
       - name: Тестовый сайт — ветка dev (если она есть)
@@ -46,7 +47,7 @@ jobs:
           ref: dev
           path: dev
       - if: steps.dev.outputs.exists == 'true'
-        run: npm ci && npm run build:dev && mkdir -p ../main/dist/dev && cp -r dist-dev/. ../main/dist/dev/
+        run: npm ci && npm run test --if-present && npm run build:dev && mkdir -p ../main/dist/dev && cp -r dist-dev/. ../main/dist/dev/
         working-directory: dev
 
       - uses: actions/upload-pages-artifact@v4

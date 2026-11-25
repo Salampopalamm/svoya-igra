@@ -88,6 +88,12 @@ export const problemText: Record<RowProblem, string> = {
 
 const looksLikeNumber = (s: string) => /^\s*\d[\d\s]*\s*$/.test(s)
 
+// Название столбца целиком: «Категория», «Вопрос», «Ответ:», «Стоимость»…
+// Ячейка, где эти слова просто встречаются («Какой вопрос задал Сфинкс?»), — не название, а вопрос.
+const HEADER_WORD = /^(категори[яи]|тема|темы|стоимость|цена|баллы?|номинал|вопрос|вопросы|ответ|ответы|файл)\s*:?$/i
+const isHeaderRow = (cells: string[]) =>
+  cells.some((cell) => HEADER_WORD.test(cell)) && cells.every((cell) => !cell || HEADER_WORD.test(cell))
+
 // Разобрать скопированные ячейки. Столбцы: Категория, Стоимость, Вопрос, Ответ.
 // Поддерживаем и короче: «Категория, Вопрос, Ответ» или просто «Вопрос, Ответ».
 // Пустая категория — как в строке выше (так бывает с объединёнными ячейками).
@@ -101,7 +107,7 @@ export function parseTable(text: string): Row[] {
   if (lines.length === 0) return []
 
   // Первая строка — заголовки («Категория», «Вопрос»…)? Пропускаем.
-  if (lines[0].some((cell) => /вопрос|категори|ответ/i.test(cell)) && !lines[0].some(looksLikeNumber)) {
+  if (isHeaderRow(lines[0])) {
     lines = lines.slice(1)
   }
 
