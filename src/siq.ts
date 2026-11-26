@@ -36,6 +36,9 @@ const NOTES = {
   finalExtra: 'в теме финала несколько вопросов — оставлен первый',
 } as const
 
+// Куда записать замену: в общий отчёт и (у вопроса) в заметку ведущему
+type NoteSink = { add(text: string): void }
+
 class Notes {
   private counts = new Map<string, number>()
   add(text: string) {
@@ -95,7 +98,7 @@ class Files {
 const FOLDER_BY_TYPE: Record<string, SiqFolder> = { image: 'Images', voice: 'Audio', audio: 'Audio', video: 'Video' }
 
 // Старый формат: <atom type="…">значение</atom>; медиа — «@имя» (файл в пакете), иначе ссылка в интернет
-function atomItem(atom: XmlNode, files: Files, notes: Notes): Item | null {
+function atomItem(atom: XmlNode, files: Files, notes: NoteSink): Item | null {
   const type = atom.attrs.type ?? 'text'
   const value = textOf(atom)
   if (type === 'text') return value ? { kind: 'text', text: value } : null
@@ -113,7 +116,7 @@ function atomItem(atom: XmlNode, files: Files, notes: Notes): Item | null {
 }
 
 // Новый формат: <item type="image" isRef="True">имя</item>; текст «replic» — слова ведущего
-function contentItem(item: XmlNode, files: Files, notes: Notes): Item | null {
+function contentItem(item: XmlNode, files: Files, notes: NoteSink): Item | null {
   const type = item.attrs.type ?? 'text'
   const value = textOf(item)
   if (type === 'text') {
@@ -197,7 +200,7 @@ function questionKind(q: XmlNode): Kind {
 }
 
 // Перевести вид вопроса SIGame в наш. Возвращает поля вопроса; что заменили — в notes.
-function convertKind(kind: Kind, price: number, notes: Notes): Partial<Question> {
+function convertKind(kind: Kind, price: number, notes: NoteSink): Partial<Question> {
   const positive = (v: string | undefined) => {
     const n = Number(v)
     return Number.isFinite(n) && n > 0 ? n : undefined
@@ -246,7 +249,15 @@ function convertKind(kind: Kind, price: number, notes: Notes): Partial<Question>
 
 const newId = () => crypto.randomUUID()
 
-function convertQuestion(q: XmlNode, value: number, files: Files, notes: Notes): Question {
+function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Notes): Question {
+  // Замены этого вопроса — и в общий отчёт, и в заметку ведущему (отчёт виден один раз, заметка — всегда)
+  const local: string[] = []
+  const notes: NoteSink = {
+    add(text) {
+      allNotes.add(text)
+      if (!local.includes(text)) local.push(text)
+    },
+  }
   let questionItems: Item[]
   let answerItems: Item[]
   let options = '' // варианты ответа «A) … B) …» — допишем к тексту вопроса
@@ -283,6 +294,7 @@ function convertQuestion(q: XmlNode, value: number, files: Files, notes: Notes):
   ].filter(Boolean)
 
   const kindFields = convertKind(questionKind(q), value, notes)
+  note.unshift(...local.map((t) => `Из SIGame: ${t}`))
   const slides = slidesFrom(questionItems)
   if (options) {
     const withText = [...slides].reverse().find((s) => s.text) ?? slides[0]
@@ -357,16 +369,33 @@ export function siqToGame(pkg: XmlNode): SiqResult {
 }
 
 // Подставить сохранённые файлы вместо заглушек. null — файл не нашёлся: убираем ссылку.
+// У вопроса, где файл не перенёсся, ведущий увидит это в заметке.
 export function replaceMedia(game: Game, saved: Map<string, MediaRef | null>): Game {
-  const swap = (ref: MediaRef | undefined) => (ref && saved.has(ref.id) ? (saved.get(ref.id) ?? undefined) : ref)
-  for (const content of game.rounds.flatMap((r) => r.categories.flatMap((c) => c.questions.flatMap(questionContents)))) {
-    const first = swap(content.media)
-    const more = (content.more ?? []).map(swap).filter((m): m is MediaRef => !!m)
-    const all = [first, ...more].filter((m): m is MediaRef => !!m)
-    delete content.media
-    delete content.more
-    if (all[0]) content.media = all[0]
-    if (all.length > 1) content.more = all.slice(1)
+  for (const question of game.rounds.flatMap((r) => r.categories.flatMap((c) => c.questions))) {
+    const lost: string[] = []
+    const swap = (ref: MediaRef | undefined) => {
+      if (!ref || !saved.has(ref.id)) return ref
+      const found = saved.get(ref.id)
+      if (!found) lost.push(ref.name)
+      return found ?? undefined
+    }
+    for (const content of questionContents(question)) {
+      const first = swap(content.media)
+      const more = (content.more ?? []).map(swap).filter((m): m is MediaRef => !!m)
+      const all = [first, ...more].filter((m): m is MediaRef => !!m)
+      delete content.media
+      delete content.more
+      if (all[0]) content.media = all[0]
+      if (all.length > 1) content.more = all.slice(1)
+    }
+    if (lost.length) {
+      const line = `Не перенёсся файл: ${lost.join(', ')} (нет в пакете или браузер его не покажет)`
+      question.hostNote = question.hostNote ? `${question.hostNote}\n${line}` : line
+    }
   }
   return game
 }
+
+// Форматы, которые браузер не проиграет (старые пакеты): такие файлы не сохраняем, а называем в отчёте
+const UNPLAYABLE = ['avi', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'wma', 'mid', 'midi', 'tif', 'tiff']
+export const browserCanPlay = (name: string) => !UNPLAYABLE.includes(name.split('.').pop()?.toLowerCase() ?? '')

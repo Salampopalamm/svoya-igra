@@ -3,7 +3,7 @@ import { APP_KEY } from './site'
 import { addMediaFile, getMedia, saveGame, saveMedia } from './db'
 import { repairGame } from './repairGame'
 import { allMediaIds } from './game'
-import { decodeName, replaceMedia, siqToGame, type SiqResult } from './siq'
+import { browserCanPlay, decodeName, replaceMedia, siqToGame, type SiqResult } from './siq'
 import { parseXml } from './xml'
 import type { Game, MediaRef, MediaType } from './types'
 
@@ -145,10 +145,17 @@ async function importSiq(zip: JSZipType, fileName: string, onProgress?: (done: n
 
   const saved = new Map<string, MediaRef | null>()
   const missing: string[] = []
+  const unplayable: string[] = []
   const failed: string[] = []
   let done = 0
   for (const f of result.files) {
     onProgress?.(done++, result.files.length)
+    // Старые форматы (.wmv, .avi…) браузер не проиграет — не тратим на них место
+    if (!browserCanPlay(f.name)) {
+      unplayable.push(f.name)
+      saved.set(f.key, null)
+      continue
+    }
     const entry = entries.get(normalize(`${f.folder}/${f.name}`))
     if (!entry) {
       missing.push(f.name)
@@ -173,6 +180,9 @@ async function importSiq(zip: JSZipType, fileName: string, onProgress?: (done: n
   const notes = [
     ...result.notes,
     ...(missing.length ? [`файлов нет в пакете (${missing.length}) — вопросы без них: ${list(missing)}`] : []),
+    ...(unplayable.length
+      ? [`файлы в старом формате, который браузер не покажет (${unplayable.length}), — пропущены: ${list(unplayable)}. Переделайте их в .mp4 / .mp3 (например, программой HandBrake) и добавьте в вопросы заново`]
+      : []),
     ...failed,
   ]
   return { game, notes }

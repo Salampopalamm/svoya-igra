@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { gameProblems } from './game'
 import { repairGame } from './repairGame'
-import { decodeName, replaceMedia, siqMediaType, siqToGame } from './siq'
+import { browserCanPlay, decodeName, replaceMedia, siqMediaType, siqToGame } from './siq'
 import { parseXml } from './xml'
 
 // Старый формат (SIGame до 7-й версии): scenario из atom, вид вопроса — <type>
@@ -157,6 +157,9 @@ describe('пакет старого формата', () => {
     expect(q3.kind).toBe('auction')
     expect(q3.slides).toEqual([{ text: 'Аукцион' }])
     expect(q4.special).toEqual({ wrong: 0 })
+    // Замена видна и потом — в заметке ведущему у самого вопроса
+    expect(q4.hostNote).toBe('Из SIGame: вопрос от спонсора → «без минуса» (перехватить его у нас можно)')
+    expect(q3.hostNote).toBe('Из SIGame: файл по ссылке из интернета — пропущен (берём только файлы внутри пакета)')
     expect(files.map((f) => f.key)).toEqual(['siq:Images/Кот.jpg', 'siq:Audio/song.mp3', 'siq:Video/clip.mp4'])
   })
 
@@ -230,6 +233,8 @@ describe('пакет: края', () => {
     expect(q1.slides[0].media?.id).toBe('m1')
     expect(q2.slides[0]).toEqual({ text: 'Что за песня?' })
     expect(q2.answer.media?.id).toBe('m3')
+    expect(q2.hostNote).toBe('Сказать: Внимание, кот!\nНе перенёсся файл: song.mp3 (нет в пакете или браузер его не покажет)')
+    expect(q1.hostNote).not.toContain('Не перенёсся')
     expect(gameProblems(fixed)).toEqual([])
   })
 
@@ -238,5 +243,8 @@ describe('пакет: края', () => {
     expect(decodeName('100%.jpg')).toBe('100%.jpg')
     expect(siqMediaType('a.GIF', 'Images')).toBe('gif')
     expect(siqMediaType('a.xyz', 'Audio')).toBe('audio')
+    expect(browserCanPlay('клип.WMV')).toBe(false)
+    expect(browserCanPlay('звук.wma')).toBe(false)
+    expect(browserCanPlay('клип.mp4')).toBe(true)
   })
 })
