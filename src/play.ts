@@ -2,6 +2,7 @@ import { auctionStartProblem, catValue, isAuction, isCat, nextBidder, validBets,
 import { betsReady, FINAL_TIMER_SEC, finalStateOf, participants, remainingThemes, removeTheme, withFinalScores } from './final'
 import { hiddenQuestions, nextTeamId, roundById } from './game'
 import { hintPenalty, hintsOf } from './hints'
+import { half, laggingTeamId, roundStartsWithLast, stealIsHalf } from './balance'
 import { withLog } from './log'
 import { newTimer, pauseTimer, startTimer, type Current, type FinalState, type LiveState } from './live'
 import { describeRule, needsTeam, targetTeam } from './rules'
@@ -237,12 +238,24 @@ export function answerPoints(s: LiveState, teamId: string | null): { plus: numbe
     const bet = (teamId && auction.bets[teamId]) || 0
     return result(bet, bet)
   }
+  // Перехват за половину (если так решил автор): и плюс, и минус — половина стоимости
+  if (isHalfSteal(s)) return result(half(correctPoints(question)), half(wrongPoints(question)))
   return result(correctPoints(question), wrongPoints(question))
 }
 
-// Подпись в журнале: «кот в мешке», «аукцион, ставка 500», «подсказок: 2, −200»
+// Сейчас перехват за половину: на обычном вопросе кто-то уже ошибся, и автор выбрал «перехват за половину».
+// У кота перехвата нет, на аукционе — свои ставки, у вопроса «для всех» и ветвящегося — нет перехвата.
+function isHalfSteal(s: LiveState): boolean {
+  const question = openQuestion(s)
+  return (
+    stealIsHalf(s.game) && s.triedTeamIds.length > 0 && !!question && !question.tree && !isForAll(question) && !catNow(s) && !auctionNow(s) && !finalOf(s)
+  )
+}
+
+// Подпись в журнале: «кот в мешке», «аукцион, ставка 500», «подсказок: 2, −200», «перехват за половину»
 function answerNote(s: LiveState, teamId: string): { note?: string } {
   const parts: string[] = []
+  if (isHalfSteal(s)) parts.push('перехват за половину')
   if (catNow(s)) parts.push('кот в мешке')
   const auction = auctionNow(s)
   if (auction) parts.push(`аукцион, ставка ${auction.bets[teamId] ?? 0}`)
@@ -446,7 +459,10 @@ export function roundLocked(s: LiveState, round: { id: string; hidden?: boolean 
 export function switchRound(s: LiveState, roundId: string): LiveState {
   const target = s.game.rounds.find((r) => r.id === roundId)
   if (s.current || roundId === roundById(s.game, s.roundId).id || !target || roundLocked(s, target)) return s
-  return { ...s, roundId }
+  // Новый (ещё не начатый) обычный раунд начинает отстающая команда — если автор не выключил это в правилах партии
+  const fresh = target.kind !== 'final' && !target.categories.some((c) => c.questions.some((q) => q.played))
+  const turnTeamId = fresh && roundStartsWithLast(s.game) ? laggingTeamId(s.game, s.turnTeamId) : s.turnTeamId
+  return { ...s, roundId, turnTeamId }
 }
 
 // Выполнить правило «ЕСЛИ → ТО» (больше его не предлагаем)

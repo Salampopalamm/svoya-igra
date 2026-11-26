@@ -17,12 +17,24 @@ export const MAX_QUESTIONS = 10 // больше 10 номиналов в стр�
 export const GRID_SIZES = [5, 8, 10] // готовые сетки
 export const DEFAULT_GRID = 10
 
-// Номиналы сетки: 100, 200, … size × 100
-const gridValues = (size: number) => Array.from({ length: size }, (_, i) => (i + 1) * 100)
+// Номиналы сетки: 100, 200, … size × 100 (step — шаг цен раунда: у второго раунда 200, 400, …)
+const gridValues = (size: number, step = 100) => Array.from({ length: size }, (_, i) => (i + 1) * step)
 
 // Новая категория с пустыми вопросами; по умолчанию 10 вопросов: 100…1000
-export function newCategory(size = DEFAULT_GRID): Category {
-  return { id: newId(), title: 'Новая категория', questions: gridValues(size).map(newQuestion) }
+export function newCategory(size = DEFAULT_GRID, step = 100): Category {
+  return { id: newId(), title: 'Новая категория', questions: gridValues(size, step).map(newQuestion) }
+}
+
+// Шаг цен раунда: самая маленькая цена (100 — у раунда 100…1000, 200 — у 200…2000); пусто — 100
+export function roundStep(round: Round): number {
+  const values = round.categories.flatMap((c) => c.questions.map((q) => q.value)).filter((v) => v > 0)
+  return values.length ? Math.min(...values) : 100
+}
+
+// Шаг цен нового обычного раунда: как на ТВ — второй раунд вдвое дороже первого, третий — втрое
+export function newRoundStep(game: Game): number {
+  const standard = game.rounds.filter((r) => r.kind !== 'final')
+  return (standard[0] ? roundStep(standard[0]) : 100) * (standard.length + 1)
 }
 
 // Сколько вопросов давать новой категории: как в самой длинной строке раунда, а в пустом раунде — 10
@@ -35,14 +47,14 @@ export function gridSizeOf(round: Round): number {
 // Не хватает — добавляем пустые вопросы с недостающими номиналами (100…size × 100).
 // Лишние — убираем сначала пустые, потом заполненные, начиная с самых дорогих.
 // Возвращает новую категорию и список убранных вопросов (чтобы предупредить и удалить их файлы).
-export function resizeCategory(category: Category, size: number): { category: Category; removed: Question[] } {
+export function resizeCategory(category: Category, size: number, step = 100): { category: Category; removed: Question[] } {
   let questions = sortByValue(category.questions)
 
   if (questions.length < size) {
     const taken = new Set(questions.map((q) => q.value))
-    const free = gridValues(MAX_QUESTIONS).filter((v) => !taken.has(v))
+    const free = gridValues(MAX_QUESTIONS, step).filter((v) => !taken.has(v))
     let next = Math.max(0, ...questions.map((q) => q.value)) // на случай нестандартных номиналов
-    while (free.length < size - questions.length) free.push((next += 100))
+    while (free.length < size - questions.length) free.push((next += step))
     questions = sortByValue([...questions, ...free.slice(0, size - questions.length).map(newQuestion)])
   }
 
@@ -58,7 +70,8 @@ export function resizeCategory(category: Category, size: number): { category: Ca
 
 // Привести все категории раунда к одной сетке
 export function resizeRound(round: Round, size: number): { round: Round; removed: Question[] } {
-  const results = round.categories.map((c) => resizeCategory(c, size))
+  const step = roundStep(round)
+  const results = round.categories.map((c) => resizeCategory(c, size, step))
   return {
     round: { ...round, categories: results.map((r) => r.category) },
     removed: results.flatMap((r) => r.removed),
@@ -79,7 +92,7 @@ export function addRound(game: Game): { game: Game; round: Round } {
     id: newId(),
     title: `Раунд ${game.rounds.length + 1}`,
     kind: 'standard',
-    categories: [newCategory(last ? gridSizeOf(last) : DEFAULT_GRID)],
+    categories: [newCategory(last ? gridSizeOf(last) : DEFAULT_GRID, newRoundStep(game))], // цены — ×2, ×3 к первому раунду
   }
   return { game: { ...game, rounds: [...game.rounds, round] }, round }
 }

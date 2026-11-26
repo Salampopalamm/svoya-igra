@@ -18,6 +18,7 @@ import {
   removeCategory,
   removeQuestion,
   removeRound,
+  roundStep,
   addRound,
   gameProblems,
   hiddenQuestions,
@@ -29,6 +30,8 @@ import {
   updateRound,
 } from '../game'
 import type { GameProblem } from '../game'
+import { balanceNotes, scaleRound, type BalanceNote } from '../balance'
+import { BalanceCheck, PlayRulesEditor } from '../components/BalanceEditor'
 import { plural } from '../plural'
 import type { Category, Game, Question } from '../types'
 
@@ -85,6 +88,17 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
     setSelectedId(problem.questionId ?? null)
   }
 
+  // Совет по балансу: открыть его раунд
+  function showBalanceNote(note: BalanceNote) {
+    if (note.roundId) setRoundId(note.roundId)
+    setSelectedId(null)
+  }
+
+  // Цены всего раунда ×factor (×2 — дороже, ×0.5 — дешевле) вместе с ценой кота и подсказок
+  function scalePrices(roundId: string, factor: number) {
+    change((g) => updateRound(g, roundId, (r) => scaleRound(r, factor)))
+  }
+
   function newRound() {
     const { game: next, round: created } = addRound(game)
     change(() => next)
@@ -124,7 +138,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
   function addCategory() {
     // В финале — тема с одним вопросом; иначе столько же вопросов, сколько в остальных категориях (в пустой игре — 10)
     const size = isFinal ? 1 : gridSizeOf(round)
-    change((g) => updateRound(g, round.id, (r) => ({ ...r, categories: [...r.categories, newCategory(size)] })))
+    change((g) => updateRound(g, round.id, (r) => ({ ...r, categories: [...r.categories, newCategory(size, roundStep(r))] })))
   }
 
   // Готовая сетка: все категории раунда — по size вопросов
@@ -162,7 +176,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
 
   function addQuestion(c: Category) {
     if (c.questions.length >= MAX_QUESTIONS) return
-    const value = Math.max(0, ...c.questions.map((q) => q.value)) + 100
+    const value = Math.max(0, ...c.questions.map((q) => q.value)) + roundStep(round) // шаг цен раунда: 100, у второго — 200
     const created = newQuestion(value)
     change((g) => updateCategory(g, c.id, (x) => ({ ...x, questions: [...x.questions, created] })))
     setSelectedId(created.id) // сразу открываем, чтобы заполнить
@@ -327,10 +341,30 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
                   {size}
                 </button>
               ))}
+              {/* Цены всего раунда: второй раунд обычно вдвое дороже первого — так отставшим есть чем догнать */}
+              <span className="ml-3 text-sm text-muted">Цены:</span>
+              <button
+                type="button"
+                onClick={() => scalePrices(round.id, 2)}
+                aria-label="Все цены раунда в два раза дороже"
+                className="h-11 min-w-11 rounded-lg border border-line px-3 text-sm hover:bg-cell"
+              >
+                ×2
+              </button>
+              <button
+                type="button"
+                onClick={() => scalePrices(round.id, 0.5)}
+                disabled={roundStep(round) <= 10}
+                aria-label="Все цены раунда в два раза дешевле"
+                className="h-11 min-w-11 rounded-lg border border-line px-3 text-sm hover:bg-cell disabled:opacity-40"
+              >
+                ÷2
+              </button>
             </div>}
           </div>
 
           <GameCheck game={game} problems={problems} onShow={showProblem} />
+          <BalanceCheck game={game} notes={balanceNotes(game)} onShow={showBalanceNote} onScaleUp={(id) => scalePrices(id, 2)} />
 
           <div className="flex flex-col gap-3">
             {round.categories.map((c, i) => (
@@ -359,6 +393,8 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           >
             + Добавить категорию
           </button>
+
+          <PlayRulesEditor rules={game.playRules} onChange={(playRules) => change((g) => ({ ...g, playRules: Object.keys(playRules).length ? playRules : undefined }))} />
 
           <RulesEditor
             game={game}

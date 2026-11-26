@@ -8,6 +8,7 @@ import { cleanClip } from './clip'
 import { cleanSpecial } from './special'
 import { cleanCat } from './catAuction'
 import { cleanHintCost, MAX_HINTS } from './hints'
+import { cleanPlayRules } from './balance'
 
 type Raw = Record<string, unknown>
 
@@ -233,6 +234,7 @@ export function repairGame(v: unknown): Game | null {
       .filter(isObject)
       .map(rule)
       .filter((r): r is Rule => !!r),
+    ...(cleanPlayRules(v.playRules) ? { playRules: cleanPlayRules(v.playRules) } : {}),
     ...(maybeNumber(v.updatedAt) ? { updatedAt: maybeNumber(v.updatedAt) } : {}),
   }
 }

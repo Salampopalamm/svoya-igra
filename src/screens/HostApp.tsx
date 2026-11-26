@@ -1062,6 +1062,11 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
               ) : undefined
             }
             points={answerPoints(live, answeringTeamId)}
+            triedLoss={Object.fromEntries(
+              (live.log ?? [])
+                .filter((e) => e.kind === 'wrong' && e.teamId && e.questionId === current.questionId)
+                .map((e) => [e.teamId!, -e.points]),
+            )}
             hints={
               hintsOf(currentCell.question).length > 0 && !final ? (
                 <HintsHost

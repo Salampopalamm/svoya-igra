@@ -163,6 +163,11 @@ export type Rule = {
   }
 }
 
+// Правила партии для баланса (функции — balance.ts):
+//   roundStart — кто начинает новый раунд: 'last' — отстающая команда (по умолчанию), 'continue' — ход идёт дальше по кругу;
+//   steal — перехват: 'full' — за полную стоимость (по умолчанию), 'half' — за половину (и плюс, и минус)
+export type PlayRules = { roundStart?: 'last' | 'continue'; steal?: 'full' | 'half' }
+
 export type Game = {
   id: string
   title: string
@@ -173,5 +178,6 @@ export type Game = {
   teams: Team[] // 1–10 команд, разного размера
   rounds: Round[]
   rules: Rule[]
+  playRules?: PlayRules // правила партии, которые выбрал автор (баланс); пусто — как по умолчанию
   updatedAt?: number // когда игру последний раз меняли (для списка «Мои игры»)
 }

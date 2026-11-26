@@ -38,6 +38,7 @@ type Props = {
   catAuction?: ReactNode // «Кот в мешке» или аукцион: внизу — кому отдать, ставки, потом ответ (CatAuctionHost)
   points: { plus: number; minus: number } // сколько за верный и неверный ответ (с учётом особых настроек и подсказок)
   hints?: ReactNode // подсказки для зала (HintsHost) — под ответом
+  triedLoss?: Record<string, number> // сколько потеряла каждая ошибившаяся команда (из журнала; перехват бывает за половину)
 }
 
 // Короткая подсказка ведущему, что покажет следующий слайд
@@ -214,6 +215,7 @@ export default function QuestionView({
   catAuction,
   points,
   hints,
+  triedLoss,
 }: Props) {
   const count = question.slides.length
   const slide = question.slides[slideIndex] ?? question.slides[0] ?? {}
@@ -391,7 +393,7 @@ export default function QuestionView({
                 </button>
 
                 {tried ? (
-                  <div className="flex h-11 items-center text-muted">{minus ? `Ошиблись −${minus}` : 'Ошиблись · без минуса'}</div>
+                  <div className="flex h-11 items-center text-muted">{(triedLoss?.[team.id] ?? minus) ? `Ошиблись −${triedLoss?.[team.id] ?? minus}` : 'Ошиблись · без минуса'}</div>
                 ) : answering ? (
                   <div className="flex gap-2">
                     <button
