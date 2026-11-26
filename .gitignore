@@ -23,3 +23,6 @@ dist-dev
 *.njsproj
 *.sln
 *.sw?
+
+# Пакеты SIGame для проверки импорта (не код)
+siq-test/

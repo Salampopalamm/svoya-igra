@@ -1,9 +1,11 @@
 import type JSZipType from 'jszip'
 import { APP_KEY } from './site'
-import { getMedia, saveGame, saveMedia } from './db'
+import { addMediaFile, getMedia, saveGame, saveMedia } from './db'
 import { repairGame } from './repairGame'
 import { allMediaIds } from './game'
-import type { Game, MediaType } from './types'
+import { decodeName, replaceMedia, siqToGame, type SiqResult } from './siq'
+import { parseXml } from './xml'
+import type { Game, MediaRef, MediaType } from './types'
 
 // Файл игры (.zip): чтобы перенести игру на другой ноутбук или собрать её вне программы.
 // Внутри:
@@ -38,6 +40,10 @@ const mimeByExtension: Record<string, string> = {
   mp4: 'video/mp4',
   webm: 'video/webm',
   mov: 'video/quicktime',
+  bmp: 'image/bmp',
+  aac: 'audio/aac',
+  flac: 'audio/flac',
+  m4v: 'video/mp4',
 }
 
 // Библиотека для .zip грузится только когда нужна — сайт открывается быстрее
@@ -70,16 +76,23 @@ export function exportFileName(game: Game) {
   return `${safe}.zip`
 }
 
-// Открыть файл игры: положить игру и её файлы в хранилище браузера. Возвращает новую игру.
+// Что получилось при открытии: новая игра и (у пакета SIGame) что пришлось заменить или пропустить
+export type Imported = { game: Game; notes: string[] }
+
+// Открыть файл игры: наш .zip или пакет SIGame (.siq). Игра и её файлы ложатся в хранилище браузера.
 // Игра всегда получает новый id — так повторное открытие того же файла не затрёт уже начатую копию.
-export async function importGame(file: File): Promise<Game> {
+// onProgress — сколько файлов пакета уже сохранено (их бывает много, это небыстро)
+export async function importGame(file: File, onProgress?: (done: number, total: number) => void): Promise<Imported> {
   const JSZip = await loadJSZip()
   let zip: JSZipType
   try {
     zip = await JSZip.loadAsync(file)
   } catch {
-    throw new Error(`«${file.name}» — не файл игры. Нужен .zip, который сохранила эта программа.`)
+    throw new Error(`«${file.name}» — не файл игры. Нужен .zip, который сохранила эта программа, или пакет SIGame (.siq).`)
   }
+
+  // Пакет SIGame: внутри content.xml, а не наш game.json
+  if (!zip.file('game.json') && zip.file('content.xml')) return importSiq(zip, file.name, onProgress)
 
   const manifestFile = zip.file('game.json')
   if (!manifestFile) throw new Error(`В «${file.name}» нет описания игры (game.json). Это точно файл игры?`)
@@ -111,7 +124,58 @@ export async function importGame(file: File): Promise<Game> {
   // Починенная игра (repairGame.ts): чего не хватало — заполнено, мусор выброшен
   const game = { ...repaired, id: crypto.randomUUID() }
   await saveGame(game)
-  return game
+  return { game, notes: [] }
+}
+
+// Пакет SIGame (.siq): описание переводит siq.ts, здесь — файлы из папок Images, Audio, Video.
+// Имена файлов в пакете бывают записаны с %-кодировкой и в другом регистре — ищем без учёта этого.
+async function importSiq(zip: JSZipType, fileName: string, onProgress?: (done: number, total: number) => void): Promise<Imported> {
+  let result: SiqResult
+  try {
+    result = siqToGame(parseXml(await zip.file('content.xml')!.async('string')))
+  } catch (e) {
+    throw new Error(`«${fileName}»: ${e instanceof Error ? e.message : 'не получилось прочитать пакет SIGame.'}`)
+  }
+
+  const normalize = (p: string) => decodeName(p).toLowerCase()
+  const entries = new Map<string, JSZipType.JSZipObject>()
+  zip.forEach((p, entry) => {
+    if (!entry.dir) entries.set(normalize(p), entry)
+  })
+
+  const saved = new Map<string, MediaRef | null>()
+  const missing: string[] = []
+  const failed: string[] = []
+  let done = 0
+  for (const f of result.files) {
+    onProgress?.(done++, result.files.length)
+    const entry = entries.get(normalize(`${f.folder}/${f.name}`))
+    if (!entry) {
+      missing.push(f.name)
+      saved.set(f.key, null)
+      continue
+    }
+    const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+    const fallback = f.type === 'audio' ? 'audio/mpeg' : f.type === 'video' ? 'video/mp4' : 'image/jpeg'
+    const blob = await entry.async('blob')
+    try {
+      saved.set(f.key, await addMediaFile(new File([blob], f.name, { type: mimeByExtension[ext] ?? fallback })))
+    } catch (e) {
+      failed.push(e instanceof Error ? e.message : `«${f.name}» не сохранился`)
+      saved.set(f.key, null)
+    }
+  }
+  onProgress?.(done, result.files.length)
+
+  const game = repairGame(replaceMedia(result.game, saved))!
+  await saveGame(game)
+  const list = (names: string[]) => names.slice(0, 5).join(', ') + (names.length > 5 ? ` и ещё ${names.length - 5}` : '')
+  const notes = [
+    ...result.notes,
+    ...(missing.length ? [`файлов нет в пакете (${missing.length}) — вопросы без них: ${list(missing)}`] : []),
+    ...failed,
+  ]
+  return { game, notes }
 }
 
 // Когда игру последний раз сохраняли файлом — чтобы напомнить в «Моих играх», если свежей копии нет.

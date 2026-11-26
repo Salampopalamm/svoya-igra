@@ -91,18 +91,25 @@ export default function LibraryApp() {
   }
 
   const [busy, setBusy] = useState<string | null>(null) // что сейчас делается: «Открываю…», «Собираю файл…»
-  const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null)
+  const [message, setMessage] = useState<{ text: string; error?: boolean; details?: string[] } | null>(null)
 
-  // Открыть файл игры (.zip): игра со всеми картинками и музыкой появится в списке
+  // Открыть файл игры (.zip) или пакет SIGame (.siq): игра со всеми картинками и музыкой появится в списке
   async function openFile(file: File | undefined) {
     if (!file) return
     setMessage(null)
     // Файл открывается целиком в памяти: большой — открываем всё равно, но предупреждаем, что это долго
     const big = file.size > BIG_ZIP
-    setBusy(`Открываю «${file.name}» (${formatSize(file.size)})…${big ? ' Файл большой — это может занять несколько минут.' : ''}`)
+    const opening = `Открываю «${file.name}» (${formatSize(file.size)})…${big ? ' Файл большой — это может занять несколько минут.' : ''}`
+    setBusy(opening)
     try {
-      const game = await importGame(file)
-      setMessage({ text: `Игра «${game.title}» добавлена.` })
+      const { game, notes } = await importGame(file, (done, total) => setBusy(`${opening} Файлы: ${done} из ${total}.`))
+      const siq = file.name.toLowerCase().endsWith('.siq')
+      setMessage({
+        text: siq
+          ? `Пакет SIGame открыт как игра «${game.title}». Команды — «Команда 1…3», поменяйте их на экране «Команды».${notes.length ? ' Что пришлось заменить:' : ''}`
+          : `Игра «${game.title}» добавлена.`,
+        details: notes,
+      })
       reload()
     } catch (e) {
       const text = e instanceof Error ? e.message : 'Не получилось открыть файл.'
@@ -160,10 +167,10 @@ export default function LibraryApp() {
         </div>
         <label className="flex cursor-pointer flex-col gap-2 rounded-2xl border border-line bg-cell p-6 hover:border-white focus-within:border-white">
           <span className="text-xl font-bold">Открыть файл игры</span>
-          <span className="text-sm text-muted">Файл .zip, который сохранили кнопкой «Отправить файлом», — со всеми картинками и музыкой.</span>
+          <span className="text-sm text-muted">Файл .zip, который сохранили кнопкой «Отправить файлом», — со всеми картинками и музыкой. Или пакет SIGame (.siq).</span>
           <input
             type="file"
-            accept=".zip,application/zip"
+            accept=".zip,.siq,application/zip"
             disabled={!!busy}
             className="sr-only"
             onChange={(e) => {
@@ -180,6 +187,13 @@ export default function LibraryApp() {
           className={`rounded-lg px-4 py-3 text-sm ${message?.error ? 'border border-white' : 'bg-cell'}`}
         >
           {busy ?? message?.text}
+          {!busy && !!message?.details?.length && (
+            <span className="mt-2 flex flex-col gap-1">
+              {message.details.map((d) => (
+                <span key={d}>• {d}</span>
+              ))}
+            </span>
+          )}
         </p>
       )}
 
