@@ -259,6 +259,28 @@ describe('пакет: как в настоящих пакетах', () => {
     expect(q1.hostNote).toBe('К теме: Назовите исполнителя\nЧисловой ответ: засчитать, если отличается не больше чем на 5')
   })
 
+  it('варианты ответа: в ответе — весь верный вариант, а не одна буква', () => {
+    const [q] = qs(
+      wrap(
+        '<question price="100"><params><param name="question" type="content"><item>Вопрос с вариантами</item></param><param name="answerType">select</param><param name="answerOptions" type="group">' +
+          '<param name="A" type="content"><item>Вариант 1</item></param><param name="C" type="content"><item>Вариант 3</item></param></param></params><right><answer>C</answer></right></question>',
+      ),
+    )
+    expect(q.answer.text).toBe('C) Вариант 3')
+  })
+
+  it('слайд, на котором был только непереносившийся файл, убирается — пустого экрана в зале нет', () => {
+    const { game } = siqToGame(
+      parseXml(wrap('<question price="100"><scenario><atom>Кто поёт?</atom><atom type="image">@a.jpg</atom><atom type="video">@clip.wmv</atom></scenario><right><answer>О</answer></right></question>')),
+    )
+    const saved = new Map([
+      ['siq:Images/a.jpg', { id: 'm1', type: 'image' as const, name: 'a.jpg' }],
+      ['siq:Video/clip.wmv', null],
+    ])
+    const q = replaceMedia(game, saved).rounds[0].categories[0].questions[0]
+    expect(q.slides).toEqual([{ text: 'Кто поёт?', media: { id: 'm1', type: 'image', name: 'a.jpg' } }])
+  })
+
   it('диапазон цены: самая большая достижимая', () => {
     expect(topPrice({ min: 100, max: 1000, step: 200 })).toBe(900)
     expect(topPrice({ min: 100, max: 500, step: 0 })).toBe(500)

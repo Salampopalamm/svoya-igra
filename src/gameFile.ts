@@ -1,6 +1,7 @@
 import type JSZipType from 'jszip'
 import { APP_KEY } from './site'
-import { addMediaFile, getMedia, saveGame, saveMedia } from './db'
+import { addMediaFile, deleteMediaFiles, getMedia, saveGame, saveMedia } from './db'
+import { storageErrorText } from './storageError'
 import { repairGame } from './repairGame'
 import { allMediaIds } from './game'
 import { browserCanPlay, decodeName, replaceMedia, siqToGame, type SiqResult } from './siq'
@@ -148,34 +149,50 @@ async function importSiq(zip: JSZipType, fileName: string, onProgress?: (done: n
   const unplayable: string[] = []
   const failed: string[] = []
   let done = 0
-  for (const f of result.files) {
-    onProgress?.(done++, result.files.length)
-    // Старые форматы (.wmv, .avi…) браузер не проиграет — не тратим на них место
-    if (!browserCanPlay(f.name)) {
-      unplayable.push(f.name)
-      saved.set(f.key, null)
-      continue
-    }
-    const entry = entries.get(normalize(`${f.folder}/${f.name}`))
-    if (!entry) {
-      missing.push(f.name)
-      saved.set(f.key, null)
-      continue
-    }
-    const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
-    const fallback = f.type === 'audio' ? 'audio/mpeg' : f.type === 'video' ? 'video/mp4' : 'image/jpeg'
-    const blob = await entry.async('blob')
-    try {
-      saved.set(f.key, await addMediaFile(new File([blob], f.name, { type: mimeByExtension[ext] ?? fallback })))
-    } catch (e) {
-      failed.push(e instanceof Error ? e.message : `«${f.name}» не сохранился`)
-      saved.set(f.key, null)
-    }
+  // Сломалось посередине (архив испорчен, браузер не записал игру) — убираем уже сохранённые файлы,
+  // чтобы они не занимали место без игры
+  const cleanUp = async () => {
+    const ids = [...saved.values()].filter((m): m is MediaRef => !!m).map((m) => m.id)
+    if (ids.length) await deleteMediaFiles(ids).catch(() => undefined)
   }
-  onProgress?.(done, result.files.length)
+  try {
+    for (const f of result.files) {
+      onProgress?.(done++, result.files.length)
+      // Старые форматы (.wmv, .avi…) браузер не проиграет — не тратим на них место
+      if (!browserCanPlay(f.name)) {
+        unplayable.push(f.name)
+        saved.set(f.key, null)
+        continue
+      }
+      const entry = entries.get(normalize(`${f.folder}/${f.name}`))
+      if (!entry) {
+        missing.push(f.name)
+        saved.set(f.key, null)
+        continue
+      }
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? ''
+      const fallback = f.type === 'audio' ? 'audio/mpeg' : f.type === 'video' ? 'video/mp4' : 'image/jpeg'
+      const blob = await entry.async('blob')
+      try {
+        saved.set(f.key, await addMediaFile(new File([blob], f.name, { type: mimeByExtension[ext] ?? fallback })))
+      } catch (e) {
+        failed.push(e instanceof Error ? e.message : `«${f.name}» не сохранился`)
+        saved.set(f.key, null)
+      }
+    }
+    onProgress?.(done, result.files.length)
+  } catch (e) {
+    await cleanUp()
+    throw new Error(`«${fileName}» открылся не до конца: ${e instanceof Error ? e.message : 'файл пакета повреждён'}. Игра не добавлена.`)
+  }
 
   const game = repairGame(replaceMedia(result.game, saved))!
-  await saveGame(game)
+  try {
+    await saveGame(game)
+  } catch (e) {
+    await cleanUp()
+    throw new Error(`Игру «${game.title}» не получилось записать в браузер: ${storageErrorText(e)}.`)
+  }
   const list = (names: string[]) => names.slice(0, 5).join(', ') + (names.length > 5 ? ` и ещё ${names.length - 5}` : '')
   const notes = [
     ...result.notes,

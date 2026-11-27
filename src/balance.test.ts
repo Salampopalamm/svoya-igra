@@ -43,6 +43,25 @@ describe('новый раунд начинает отстающая команд
   })
 })
 
+describe('заглянули в следующий раунд и вернулись', () => {
+  it('ничего там не сыграв — ход как был; назад в раунд ход отстающей не отдаётся', () => {
+    const { s, g, ids } = twoRounds([500, -200, 300])
+    const midGame = { ...s, turnTeamId: ids[2] } // в первом раунде ход у третьей команды
+    const peek = switchRound(midGame, g.rounds[1].id)
+    expect(peek.turnTeamId).toBe(ids[1]) // новый раунд начинает отстающая
+    const back = switchRound(peek, g.rounds[0].id)
+    expect(back.turnTeamId).toBe(ids[2]) // вернулись — ход снова у третьей
+    expect(back.turnBeforeRound).toBeNull()
+  })
+
+  it('во втором раунде уже играли — возврат ход не трогает', () => {
+    const { s, g, ids } = twoRounds([500, -200, 300])
+    const peek = switchRound({ ...s, turnTeamId: ids[2] }, g.rounds[1].id)
+    const played = { ...peek, turnTeamId: ids[0], game: { ...peek.game, rounds: [peek.game.rounds[0], { ...peek.game.rounds[1], categories: [{ ...peek.game.rounds[1].categories[0], questions: [{ ...peek.game.rounds[1].categories[0].questions[0], played: true }] }] }] } }
+    expect(switchRound(played, g.rounds[0].id).turnTeamId).toBe(ids[0])
+  })
+})
+
 describe('перехват за половину', () => {
   function stealGame(playRules?: PlayRules, question: Question = q(300)) {
     const category = cat('Кино', [question])

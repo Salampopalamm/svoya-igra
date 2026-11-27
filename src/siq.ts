@@ -296,6 +296,7 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
   let answerItems: Item[]
   let options = '' // варианты ответа «A) … B) …» — допишем к тексту вопроса
   let numberNote = ''
+  let rightOption = '' // верный вариант целиком, если ответ — буква варианта
   const params = kid(q, 'params')
   if (params) {
     const param = (name: string) => kids(params, 'param').find((p) => p.attrs.name === name)
@@ -313,7 +314,12 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
     const optionParams = kids(param('answerOptions'), 'param')
     if (textOf(param('answerType')) === 'select' && optionParams.length) {
       notes.add(NOTES.select)
-      options = optionParams.map((o) => `${o.attrs.name ?? ''}) ${kids(o, 'item').map(textOf).filter(Boolean).join(' ')}`).join('\n')
+      const lines = optionParams.map((o) => ({ name: o.attrs.name ?? '', text: kids(o, 'item').map(textOf).filter(Boolean).join(' ') }))
+      options = lines.map((l) => `${l.name}) ${l.text}`).join('\n')
+      // Верный ответ в пакете — буква варианта («C»): в зале показываем «C) Вариант 3», а не одну букву
+      const rightName = textOf(path(q, 'right', 'answer')[0])
+      const chosen = lines.find((l) => l.name.toLowerCase() === rightName.toLowerCase())
+      if (chosen) rightOption = `${chosen.name}) ${chosen.text}`
     }
     // Числовой ответ с допуском: «засчитать ±5»
     const deviation = Number(textOf(param('answerDeviation')))
@@ -348,7 +354,7 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
     const withText = [...slides].reverse().find((s) => s.text) ?? slides[0]
     withText.text = withText.text ? `${withText.text}\n${options}` : options
   }
-  const answer = answerFrom(right[0] ?? '', answerItems)
+  const answer = answerFrom(rightOption || (right[0] ?? ''), answerItems)
   // Кот без вопроса приходит пустым — пишем залу, что происходит, иначе ячейка выглядит незаполненной
   if (isCatWithoutQuestion(kind)) {
     if (!slides.some((s) => s.text || s.media)) slides.splice(0, slides.length, { text: 'Кот в мешке без вопроса: очки достаются команде, которой его отдали' })
@@ -449,6 +455,9 @@ export function replaceMedia(game: Game, saved: Map<string, MediaRef | null>): G
       if (all[0]) content.media = all[0]
       if (all.length > 1) content.more = all.slice(1)
     }
+    // Слайд, на котором был только этот файл, опустел — убираем его, чтобы в зале не было пустого экрана
+    const filled = question.slides.filter((s) => s.text?.trim() || s.media)
+    if (filled.length !== question.slides.length) question.slides = filled.length ? filled : [{}]
     if (lost.length) {
       const line = `Не перенёсся файл: ${lost.join(', ')} (нет в пакете или браузер его не покажет)`
       question.hostNote = question.hostNote ? `${question.hostNote}\n${line}` : line

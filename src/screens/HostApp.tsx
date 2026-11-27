@@ -565,6 +565,11 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
   // Горячие клавиши
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Ctrl+S: партия и так сохраняется сама — не даём браузеру сохранять бесполезную копию страницы
+      if ((e.ctrlKey || e.metaKey) && e.code === 'KeyS') {
+        e.preventDefault()
+        return
+      }
       if (typingInField(e.target)) return
       const command = hostKey(e, { questionOpen: !!current, isFinal }) // какая клавиша что значит — hostKeys.ts
       if (!command) return
@@ -990,8 +995,8 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
 
       {partyUnsaved && (
         <div role="alert" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">
-          ⚠ Браузер не сохраняет ход партии (закончилось место). Игра идёт, но не закрывайте и не обновляйте эту вкладку —
-          иначе счёт пропадёт. Счёт можно сохранить в «📜 Журнал» → «Сохранить в Excel».
+          ⚠ Браузер не даёт сохранить ход партии (закончилось место или в настройках браузера запрещено хранить данные сайтов).
+          Игра идёт, но не закрывайте и не обновляйте эту вкладку — иначе счёт пропадёт. Счёт можно сохранить в «📜 Журнал» → «Сохранить в Excel».
         </div>
       )}
 

@@ -458,11 +458,18 @@ export function roundLocked(s: LiveState, round: { id: string; hidden?: boolean 
 // Перейти к другому раунду — только с табло и не в закрытый скрытый
 export function switchRound(s: LiveState, roundId: string): LiveState {
   const target = s.game.rounds.find((r) => r.id === roundId)
-  if (s.current || roundId === roundById(s.game, s.roundId).id || !target || roundLocked(s, target)) return s
-  // Новый (ещё не начатый) обычный раунд начинает отстающая команда — если автор не выключил это в правилах партии
-  const fresh = target.kind !== 'final' && !target.categories.some((c) => c.questions.some((q) => q.played))
-  const turnTeamId = fresh && roundStartsWithLast(s.game) ? laggingTeamId(s.game, s.turnTeamId) : s.turnTeamId
-  return { ...s, roundId, turnTeamId }
+  const from = roundById(s.game, s.roundId)
+  if (s.current || roundId === from.id || !target || roundLocked(s, target)) return s
+  const untouched = (r: { categories: { questions: { played: boolean }[] }[] }) => !r.categories.some((c) => c.questions.some((q) => q.played))
+  // Заглянули в следующий раунд и вернулись, ничего там не сыграв, — ход как был до перехода
+  const back = s.turnBeforeRound
+  if (back && back.roundId === roundId && untouched(from)) return { ...s, roundId, turnTeamId: back.turnTeamId, turnBeforeRound: null }
+  // Новый (ещё не начатый) обычный раунд начинает отстающая команда — при переходе вперёд и если автор не выключил это
+  const forward = s.game.rounds.indexOf(target) > s.game.rounds.indexOf(from)
+  if (forward && target.kind !== 'final' && untouched(target) && roundStartsWithLast(s.game)) {
+    return { ...s, roundId, turnTeamId: laggingTeamId(s.game, s.turnTeamId), turnBeforeRound: { roundId: from.id, turnTeamId: s.turnTeamId } }
+  }
+  return { ...s, roundId, turnBeforeRound: null }
 }
 
 // Выполнить правило «ЕСЛИ → ТО» (больше его не предлагаем)
