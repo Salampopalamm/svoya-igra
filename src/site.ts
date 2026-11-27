@@ -19,5 +19,13 @@ export const BUILD_VERSION = buildVersion(
   typeof __BUILD_DATE__ === 'string' ? __BUILD_DATE__ : '',
 )
 
+// Анкета замечания на GitHub (шаблоны — .github/ISSUE_TEMPLATE в main). Версия сайта подставляется
+// в поле «Версия» (id `version` в шаблоне), чтобы тестировщику не переписывать её вручную.
+export const ISSUES_URL = 'https://github.com/Salampopalamm/svoya-igra/issues/new'
+export function issueUrl(template: 'bug.yml' | 'idea.yml', version: string): string {
+  const url = `${ISSUES_URL}?template=${template}`
+  return version ? `${url}&version=${encodeURIComponent(version)}` : url
+}
+
 // Начало всех имён в хранилище. У основного сайта — как было всегда, чтобы игры не потерялись.
 export const APP_KEY = IS_DEV_SITE ? 'svoya-igra-dev' : 'svoya-igra'
