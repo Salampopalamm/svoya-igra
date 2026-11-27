@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { gameProblems } from './game'
 import { repairGame } from './repairGame'
-import { browserCanPlay, decodeName, replaceMedia, siqMediaType, siqToGame } from './siq'
+import { browserCanPlay, decodeName, replaceMedia, siqMediaType, siqToGame, topPrice } from './siq'
 import { parseXml } from './xml'
 
 // Старый формат (SIGame до 7-й версии): scenario из atom, вид вопроса — <type>
@@ -156,9 +156,9 @@ describe('пакет старого формата', () => {
   it('аукцион, вопрос от спонсора; ссылка в интернет пропущена', () => {
     expect(q3.kind).toBe('auction')
     expect(q3.slides).toEqual([{ text: 'Аукцион' }])
-    expect(q4.special).toEqual({ wrong: 0 })
+    expect(q4.special).toEqual({ correct: 2, wrong: 0 }) // в SIGame спонсорский вопрос — удвоенная цена без риска
     // Замена видна и потом — в заметке ведущему у самого вопроса
-    expect(q4.hostNote).toBe('Из SIGame: вопрос от спонсора → «без минуса» (перехватить его у нас можно)')
+    expect(q4.hostNote).toBe('Из SIGame: вопрос от спонсора → «×2, без минуса» (перехватить его у нас можно)')
     expect(q3.hostNote).toBe('Из SIGame: файл по ссылке из интернета — пропущен (берём только файлы внутри пакета)')
     expect(files.map((f) => f.key)).toEqual(['siq:Images/Кот.jpg', 'siq:Audio/song.mp3', 'siq:Video/clip.mp4'])
   })
@@ -168,7 +168,7 @@ describe('пакет старого формата', () => {
     expect(game.rounds[1].categories[0].questions[0].answer.text).toBe('988')
     expect(notes).toEqual([
       'файл по ссылке из интернета — пропущен (берём только файлы внутри пакета)',
-      'вопрос от спонсора → «без минуса» (перехватить его у нас можно)',
+      'вопрос от спонсора → «×2, без минуса» (перехватить его у нас можно)',
       'в теме финала несколько вопросов — оставлен первый',
     ])
   })
@@ -201,6 +201,67 @@ describe('пакет нового формата (SIGame 7)', () => {
       'варианты ответа → дописаны в текст вопроса',
       'ставки всех команд → вопрос «для всех команд» за его стоимость',
     ])
+  })
+})
+
+// Случаи из настоящих пакетов SIGame (тестовые пакеты из репозитория программы, 27.11.2026)
+describe('пакет: как в настоящих пакетах', () => {
+  const wrap = (questions: string, extra = '') =>
+    `<package name="П"><rounds><round name="Р"><themes><theme name="Т">${extra}<questions>${questions}</questions></theme></themes></round></rounds></package>`
+  const qs = (xml: string) => siqToGame(parseXml(xml)).game.rounds[0].categories[0].questions
+
+  it('картинки, показанные вместе (waitForFinish="False"), — на одном слайде; текст под картинкой — тоже', () => {
+    const img = (n: string, together = true) => `<item type="image" isRef="True"${together ? ' waitForFinish="False"' : ''}>${n}.jpeg</item>`
+    const [many, under, over] = qs(
+      wrap(
+        `<question price="100"><params><param name="question" type="content">${img('a')}${img('b')}${img('c')}${img('d', false)}</param></params><right><answer>О</answer></right></question>` +
+          `<question price="200"><params><param name="question" type="content">${img('e')}<item>Текст под изображением</item></param></params><right><answer>О</answer></right></question>` +
+          `<question price="300"><params><param name="question" type="content"><item waitForFinish="False">Текст над</item>${img('f', false)}</param></params><right><answer>О</answer></right></question>`,
+      ),
+    )
+    expect(many.slides).toHaveLength(1)
+    expect([many.slides[0].media?.name, ...(many.slides[0].more ?? []).map((m) => m.name)]).toEqual(['a.jpeg', 'b.jpeg', 'c.jpeg', 'd.jpeg'])
+    expect(under.slides).toEqual([{ media: { id: 'siq:Images/e.jpeg', type: 'image', name: 'e.jpeg' }, text: 'Текст под изображением' }])
+    expect(over.slides).toHaveLength(1)
+  })
+
+  it('цена кота: диапазон — самая большая достижимая; 0 — самая дорогая в раунде; одно число — оно', () => {
+    const bag = (cost: string, price = 100) =>
+      `<question price="${price}"><type name="bagcat"><param name="theme">Новая тема</param><param name="cost">${cost}</param><param name="self">true</param><param name="knows">after</param></type><scenario><atom>Кот</atom></scenario><right><answer>О</answer></right></question>`
+    const set = (min: number, max: number, step: number) =>
+      `<question price="100" type="secret"><params><param name="price" type="numberSet"><numberSet minimum="${min}" maximum="${max}" step="${step}" /></param><param name="question" type="content"><item>Кот</item></param></params><right><answer>О</answer></right></question>`
+    const cats = qs(wrap(bag('[100;1000]/200') + bag('[100;500]') + bag('0') + bag('2000') + set(100, 1000, 200) + set(0, 0, 0) + set(700, 700, 0) + `<question price="1500"><scenario><atom>Самый дорогой</atom></scenario><right><answer>О</answer></right></question>`))
+    expect(cats.slice(0, 7).map((q) => q.cat?.value ?? q.value)).toEqual([900, 500, 1500, 2000, 900, 1500, 700])
+  })
+
+  it('кот без вопроса (secretNoQuestion и knows="never") — понятный текст вместо пустого слайда', () => {
+    const [v5, v4] = qs(
+      wrap(
+        '<question price="700" type="secretNoQuestion"><params><param name="price" type="numberSet"><numberSet minimum="700" maximum="700" step="0" /></param><param name="selectionMode">exceptCurrent</param></params><right><answer /></right></question>' +
+          '<question price="700"><type name="bagcat"><param name="theme">-</param><param name="cost">700</param><param name="self">false</param><param name="knows">never</param></type><scenario><atom>Если указан режим «Никогда», вопрос не задаётся</atom></scenario><right><answer /></right></question>',
+      ),
+    )
+    expect(v5).toMatchObject({ kind: 'cat-in-bag', slides: [{ text: 'Кот в мешке без вопроса: очки достаются команде, которой его отдали' }], answer: { text: 'Очки ваши!' } })
+    expect(v5.cat).toBeUndefined() // цена как в ячейке, темы нет
+    expect(v4.cat).toBeUndefined() // тема «-» — это «без темы»
+    expect(v4.hostNote).toContain('кот без вопроса')
+  })
+
+  it('цена -1 — пустое место в теме: вопроса нет; комментарий к теме и числовой ответ — ведущему', () => {
+    const [q1, q2] = qs(
+      wrap(
+        '<question price="100"><params><param name="question" type="content"><item>Год?</item></param><param name="answerType">number</param><param name="answerDeviation">5</param></params><right><answer>1975</answer></right></question>' +
+          '<question price="-1"><params /><right /></question><question price="300"><params><param name="question" type="content"><item>Ещё</item></param></params><right><answer>О</answer></right></question>',
+        '<info><comments>Назовите исполнителя</comments></info>',
+      ),
+    )
+    expect([q1.value, q2.value]).toEqual([100, 300])
+    expect(q1.hostNote).toBe('К теме: Назовите исполнителя\nЧисловой ответ: засчитать, если отличается не больше чем на 5')
+  })
+
+  it('диапазон цены: самая большая достижимая', () => {
+    expect(topPrice({ min: 100, max: 1000, step: 200 })).toBe(900)
+    expect(topPrice({ min: 100, max: 500, step: 0 })).toBe(500)
   })
 })
 

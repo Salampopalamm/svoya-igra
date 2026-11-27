@@ -24,7 +24,7 @@ export type SiqResult = { game: Game; files: SiqFile[]; notes: string[] }
 // Что пришлось заменить или пропустить — показываем после открытия
 const NOTES = {
   noRisk: 'вопрос без риска → «×2, без минуса» (перехватить его у нас можно)',
-  sponsored: 'вопрос от спонсора → «без минуса» (перехватить его у нас можно)',
+  sponsored: 'вопрос от спонсора → «×2, без минуса» (перехватить его у нас можно)',
   catRange: 'кот с выбором цены → цена кота — самая большая из возможных',
   catNoSelf: 'кот, которого нельзя оставить себе → у нас его можно отдать и себе',
   catNoQuestion: 'кот без вопроса → обычный кот: ведущий просто нажимает «Верно»',
@@ -76,7 +76,9 @@ export function decodeName(name: string): string {
 
 // ---- Содержимое вопроса ----
 
-type Item = { kind: 'text'; text: string } | { kind: 'say'; text: string } | { kind: 'media'; file: SiqFile }
+// join — показывается вместе с предыдущим (в новом формате у предыдущего waitForFinish="False"):
+// несколько картинок сразу на экране, «текст под картинкой»
+type Item = ({ kind: 'text'; text: string } | { kind: 'say'; text: string } | { kind: 'media'; file: SiqFile }) & { join?: boolean }
 
 class Files {
   private byKey = new Map<string, SiqFile>()
@@ -138,19 +140,30 @@ function contentItem(item: XmlNode, files: Files, notes: NoteSink): Item | null 
 // Пока файл не сохранён — ссылка-заглушка с id = key
 const placeholder = (file: SiqFile): MediaRef => ({ id: file.key, type: file.type, name: file.name })
 
+const isPicture = (type: MediaType) => type === 'image' || type === 'gif'
+
 // Слайды вопроса: текст и следующий за ним файл — на одном слайде («Кто на фото?» + фото),
-// каждый следующий файл — новый слайд (в SIGame они идут друг за другом)
+// каждый следующий файл — новый слайд (в SIGame они идут друг за другом). То, что в пакете
+// показывается вместе (join), — на том же слайде: текст под картинкой, до 8 картинок рядом.
 function slidesFrom(items: Item[]): Content[] {
   const slides: Content[] = []
   let current: Content | null = null
   for (const item of items) {
     if (item.kind === 'say') continue
     if (item.kind === 'text') {
-      if (!current || current.text || current.media) slides.push((current = {}))
-      current.text = item.text
+      if (current && item.join && !current.text) current.text = item.text
+      else {
+        if (!current || current.text || current.media) slides.push((current = {}))
+        current.text = item.text
+      }
     } else {
-      if (!current || current.media) slides.push((current = {}))
-      current.media = placeholder(item.file)
+      const pictures = current ? 1 + (current.more?.length ?? 0) : 0
+      if (current?.media && item.join && isPicture(current.media.type) && isPicture(item.file.type) && pictures < MAX_PICTURES) {
+        current.more = [...(current.more ?? []), placeholder(item.file)]
+      } else {
+        if (!current || current.media) slides.push((current = {}))
+        current.media = placeholder(item.file)
+      }
     }
   }
   return slides.length ? slides : [{}]
@@ -175,51 +188,69 @@ function answerFrom(right: string, items: Item[]): Content {
 
 // ---- Вид вопроса ----
 
-type Kind = { name: string; params: Record<string, string>; priceRange?: { min: number; max: number } }
+// Цена кота в пакете: одно число, диапазон «от … до … с шагом …» или 0 — «на выбор: самая дешёвая или самая дорогая в раунде»
+type Price = { min: number; max: number; step: number }
+type Kind = { name: string; params: Record<string, string>; price?: Price }
+
+// Старый формат: «2000», «0», «[100;1000]/200», «[100;500]»
+function parsePrice(text: string | undefined): Price | undefined {
+  const t = text?.trim() ?? ''
+  const range = /^\[(\d+);(\d+)\](?:\/(\d+))?$/.exec(t)
+  if (range) return { min: Number(range[1]), max: Number(range[2]), step: Number(range[3] ?? 0) }
+  const n = Number(t)
+  return t && Number.isFinite(n) ? { min: n, max: n, step: 0 } : undefined
+}
+
+// Самая большая цена, которую можно выбрать (с шагом 200 от 100 до 1000 — это 900)
+export function topPrice(p: Price): number {
+  return p.step > 0 ? p.min + Math.floor((p.max - p.min) / p.step) * p.step : p.max
+}
 
 function questionKind(q: XmlNode): Kind {
   const params: Record<string, string> = {}
   const v4 = kid(q, 'type')
   if (v4) {
     for (const p of kids(v4, 'param')) params[p.attrs.name ?? ''] = textOf(p)
-    return { name: v4.attrs.name ?? 'simple', params }
+    return { name: v4.attrs.name ?? 'simple', params, price: parsePrice(params.cost) }
   }
-  let priceRange: Kind['priceRange']
+  let price: Price | undefined
   for (const p of kids(kid(q, 'params'), 'param')) {
     const name = p.attrs.name ?? ''
     if (name === 'price') {
       const set = kid(p, 'numberSet')
-      if (set) {
-        const min = Number(set.attrs.minimum)
-        const max = Number(set.attrs.maximum)
-        if (Number.isFinite(min) && Number.isFinite(max)) priceRange = { min, max }
-      } else params.price = textOf(p)
+      const [min, max, step] = [set?.attrs.minimum, set?.attrs.maximum, set?.attrs.step].map(Number)
+      price = set && Number.isFinite(min) && Number.isFinite(max) ? { min, max, step: Number.isFinite(step) ? step : 0 } : parsePrice(textOf(p))
     } else if (!kids(p, 'item').length && !kids(p, 'param').length) params[name] = textOf(p)
   }
-  return { name: q.attrs.type ?? 'simple', params, priceRange }
+  return { name: q.attrs.type ?? 'simple', params, price }
 }
 
+// Кот без вопроса: очки просто достаются получателю (в старом формате — knows="never")
+const isCatWithoutQuestion = (kind: Kind) => kind.name === 'secretNoQuestion' || (kind.name === 'bagcat' && kind.params.knows === 'never')
+
 // Перевести вид вопроса SIGame в наш. Возвращает поля вопроса; что заменили — в notes.
-function convertKind(kind: Kind, price: number, notes: NoteSink): Partial<Question> {
-  const positive = (v: string | undefined) => {
-    const n = Number(v)
-    return Number.isFinite(n) && n > 0 ? n : undefined
-  }
+// roundTop — самая дорогая цена в раунде (кот «на выбор: самая дешёвая или самая дорогая»)
+function convertKind(kind: Kind, price: number, roundTop: number, notes: NoteSink): Partial<Question> {
   switch (kind.name) {
     case 'cat':
     case 'bagcat':
     case 'secret':
     case 'secretPublicPrice':
     case 'secretNoQuestion': {
-      if (kind.name === 'secretNoQuestion') notes.add(NOTES.catNoQuestion)
+      if (isCatWithoutQuestion(kind)) notes.add(NOTES.catNoQuestion)
       if (kind.params.self === 'false' || kind.params.selectionMode === 'exceptCurrent') notes.add(NOTES.catNoSelf)
-      let value = positive(kind.params.cost) ?? positive(kind.params.price)
-      if (kind.priceRange) {
-        if (kind.priceRange.max > kind.priceRange.min) notes.add(NOTES.catRange)
-        value = kind.priceRange.max > 0 ? kind.priceRange.max : value
-      } else if (kind.name === 'bagcat' && !value) notes.add(NOTES.catRange)
+      let value: number | undefined
+      if (kind.price) {
+        if (kind.price.max <= 0) {
+          notes.add(NOTES.catRange) // 0 — на выбор: самая дешёвая или самая дорогая в раунде
+          value = roundTop
+        } else {
+          if (topPrice(kind.price) > kind.price.min) notes.add(NOTES.catRange)
+          value = topPrice(kind.price)
+        }
+      }
       const theme = kind.params.theme?.trim()
-      const cat = { ...(theme ? { theme } : {}), ...(value && value !== price ? { value } : {}) }
+      const cat = { ...(theme && theme !== '-' ? { theme } : {}), ...(value && value !== price ? { value } : {}) }
       return { kind: 'cat-in-bag', ...(Object.keys(cat).length ? { cat } : {}) }
     }
     case 'auction':
@@ -227,7 +258,7 @@ function convertKind(kind: Kind, price: number, notes: NoteSink): Partial<Questi
       return { kind: 'auction' }
     case 'sponsored':
       notes.add(NOTES.sponsored)
-      return { special: { wrong: 0 } }
+      return { special: { correct: 2, wrong: 0 } satisfies Special }
     case 'noRisk':
       notes.add(NOTES.noRisk)
       return { special: { correct: 2, wrong: 0 } satisfies Special }
@@ -249,7 +280,10 @@ function convertKind(kind: Kind, price: number, notes: NoteSink): Partial<Questi
 
 const newId = () => crypto.randomUUID()
 
-function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Notes): Question {
+// Где вопрос: самая дорогая цена раунда (для кота «на выбор») и комментарий к теме («Назовите исполнителя»)
+type Place = { roundTop: number; themeNote: string }
+
+function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Notes, where: Place): Question {
   // Замены этого вопроса — и в общий отчёт, и в заметку ведущему (отчёт виден один раз, заметка — всегда)
   const local: string[] = []
   const notes: NoteSink = {
@@ -261,10 +295,18 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
   let questionItems: Item[]
   let answerItems: Item[]
   let options = '' // варианты ответа «A) … B) …» — допишем к тексту вопроса
+  let numberNote = ''
   const params = kid(q, 'params')
   if (params) {
     const param = (name: string) => kids(params, 'param').find((p) => p.attrs.name === name)
-    const items = (p: XmlNode | undefined) => kids(p, 'item').map((i) => contentItem(i, files, notes)).filter((i): i is Item => !!i)
+    // У предыдущего waitForFinish="False" — этот показывается вместе с ним
+    const items = (p: XmlNode | undefined) =>
+      kids(p, 'item')
+        .map((it, i, all) => {
+          const item = contentItem(it, files, notes)
+          return item && i > 0 && all[i - 1].attrs.waitForFinish?.toLowerCase() === 'false' ? { ...item, join: true } : item
+        })
+        .filter((i): i is Item => !!i)
     questionItems = items(param('question'))
     answerItems = items(param('answer'))
     // Варианты ответа (А, Б, В…) — дописываем в текст вопроса
@@ -273,6 +315,9 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
       notes.add(NOTES.select)
       options = optionParams.map((o) => `${o.attrs.name ?? ''}) ${kids(o, 'item').map(textOf).filter(Boolean).join(' ')}`).join('\n')
     }
+    // Числовой ответ с допуском: «засчитать ±5»
+    const deviation = Number(textOf(param('answerDeviation')))
+    if (textOf(param('answerType')) === 'number' && deviation > 0) numberNote = `Числовой ответ: засчитать, если отличается не больше чем на ${deviation}`
   } else {
     const atoms = path(q, 'scenario', 'atom')
     const marker = atoms.findIndex((a) => a.attrs.type === 'marker')
@@ -286,26 +331,35 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
   const wrong = path(q, 'wrong', 'answer').map(textOf).filter(Boolean)
   const info = kid(q, 'info')
   const note = [
+    where.themeNote ? `К теме: ${where.themeNote}` : '',
     ...[...questionItems, ...answerItems].filter((i) => i.kind === 'say').map((i) => `Сказать: ${(i as { text: string }).text}`),
+    numberNote,
     right.length > 1 ? `Засчитать также: ${right.slice(1).join('; ')}` : '',
     wrong.length ? `Неверные ответы: ${wrong.join('; ')}` : '',
     ...path(info, 'comments').map(textOf).filter(Boolean).map((t) => `Комментарий: ${t}`),
     ...path(info, 'sources', 'source').map(textOf).filter(Boolean).map((t) => `Источник: ${t}`),
   ].filter(Boolean)
 
-  const kindFields = convertKind(questionKind(q), value, notes)
+  const kind = questionKind(q)
+  const kindFields = convertKind(kind, value, where.roundTop, notes)
   note.unshift(...local.map((t) => `Из SIGame: ${t}`))
   const slides = slidesFrom(questionItems)
   if (options) {
     const withText = [...slides].reverse().find((s) => s.text) ?? slides[0]
     withText.text = withText.text ? `${withText.text}\n${options}` : options
   }
+  const answer = answerFrom(right[0] ?? '', answerItems)
+  // Кот без вопроса приходит пустым — пишем залу, что происходит, иначе ячейка выглядит незаполненной
+  if (isCatWithoutQuestion(kind)) {
+    if (!slides.some((s) => s.text || s.media)) slides.splice(0, slides.length, { text: 'Кот в мешке без вопроса: очки достаются команде, которой его отдали' })
+    if (!answer.text && !answer.media) answer.text = 'Очки ваши!'
+  }
   return {
     id: newId(),
     value,
     kind: 'normal',
     slides,
-    answer: answerFrom(right[0] ?? '', answerItems),
+    answer,
     played: false,
     ...(note.length ? { hostNote: note.join('\n') } : {}),
     ...kindFields,
@@ -313,17 +367,21 @@ function convertQuestion(q: XmlNode, value: number, files: Files, allNotes: Note
 }
 
 // Тема → категории (длинная тема — несколько категорий по 10 вопросов)
-function convertTheme(theme: XmlNode, final: boolean, files: Files, notes: Notes): Category[] {
+// Цена «-1» в SIGame — пустое место в теме, вопроса там нет
+const isGap = (q: XmlNode) => Number(q.attrs.price) < 0
+
+function convertTheme(theme: XmlNode, final: boolean, roundTop: number, files: Files, notes: Notes): Category[] {
   const title = theme.attrs.name?.trim() || 'Тема'
-  const raw = path(theme, 'questions', 'question')
+  const raw = path(theme, 'questions', 'question').filter((q) => !isGap(q))
+  const where: Place = { roundTop, themeNote: path(theme, 'info', 'comments').map(textOf).filter(Boolean).join(' ') }
   if (final) {
     if (raw.length > 1) notes.add(NOTES.finalExtra)
     const first = raw[0]
-    return [{ id: newId(), title, questions: first ? [convertQuestion(first, 0, files, notes)] : [] }]
+    return [{ id: newId(), title, questions: first ? [convertQuestion(first, 0, files, notes, where)] : [] }]
   }
   const questions = raw.map((q, i) => {
     const price = Number(q.attrs.price)
-    return convertQuestion(q, Number.isFinite(price) && price > 0 ? price : (i + 1) * 100, files, notes)
+    return convertQuestion(q, Number.isFinite(price) && price > 0 ? price : (i + 1) * 100, files, notes, where)
   })
   if (questions.length <= MAX_QUESTIONS) return [{ id: newId(), title, questions }]
   notes.add(NOTES.split)
@@ -336,11 +394,14 @@ function convertTheme(theme: XmlNode, final: boolean, files: Files, notes: Notes
 
 function convertRound(round: XmlNode, index: number, files: Files, notes: Notes): Round {
   const final = round.attrs.type === 'final'
+  const themes = path(round, 'themes', 'theme')
+  const prices = themes.flatMap((t) => path(t, 'questions', 'question').map((q) => Number(q.attrs.price))).filter((p) => p > 0)
+  const roundTop = prices.length ? Math.max(...prices) : 0
   return {
     id: newId(),
     title: round.attrs.name?.trim() || (final ? 'Финал' : `Раунд ${index + 1}`),
     kind: final ? 'final' : 'standard',
-    categories: path(round, 'themes', 'theme').flatMap((t) => convertTheme(t, final, files, notes)),
+    categories: themes.flatMap((t) => convertTheme(t, final, roundTop, files, notes)),
   }
 }
 
