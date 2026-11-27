@@ -3,6 +3,7 @@ import PlayerAvatar from '../components/PlayerAvatar'
 import PlayersList from '../components/PlayersList'
 import TeamIcon from '../components/TeamIcon'
 import { addMediaFile, deleteMediaIfUnused } from '../db'
+import SaveButton from '../components/SaveButton'
 import {
   addPlayers,
   addTeam,
@@ -25,7 +26,7 @@ const ghostButton = 'h-11 min-w-11 rounded-lg border border-line px-3 text-sm ho
 // Экран «Команды и игроки» (макет «Players»): слева общий список участников, справа команды.
 // Открывается и перед игрой, и во время неё: счёт при правке команд не сбрасывается.
 export default function TeamsApp({ initialGame }: { initialGame: Game }) {
-  const { game, change, saved, dropMedia } = useSavedGame(initialGame)
+  const { game, change, saved, error, retry, flush, dropMedia } = useSavedGame(initialGame)
   const { teams, players } = game
   const unassigned = players.filter((p) => !teams.some((t) => t.id === p.teamId))
 
@@ -58,9 +59,7 @@ export default function TeamsApp({ initialGame }: { initialGame: Game }) {
           <span className="text-sm text-muted">{game.title} · можно открыть и во время игры</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="mr-2 text-sm text-muted" aria-live="polite">
-            {saved ? 'Все изменения сохранены' : 'Сохраняю…'}
-          </span>
+          <SaveButton game={game} saved={saved} error={error} onRetry={retry} flush={flush} />
           <a href={`#/edit/${encodeURIComponent(game.id)}`} className={`flex items-center ${ghostButton}`}>
             Вопросы
           </a>

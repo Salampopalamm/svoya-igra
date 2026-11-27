@@ -164,10 +164,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
     }
   }, [])
 
-  // При каждом изменении: сохранить и отправить в зал
+  // При каждом изменении: сохранить и отправить в зал. Не записалось — предупреждаем ведущего
+  const [partyUnsaved, setPartyUnsaved] = useState(false)
   useEffect(() => {
     liveRef.current = live
-    saveState(live)
+    // Записать в хранилище браузера можно только здесь, а результат нужен на экране — поэтому setState в эффекте
+    // eslint-disable-next-line react/set-state-in-effect
+    setPartyUnsaved(!saveState(live))
     channelRef.current?.postMessage({ type: 'state', state: live } satisfies Message)
   }, [live])
 
@@ -984,6 +987,13 @@ export default function HostApp({ initialGame }: { initialGame: Game }) {
         gameId={game.id}
         quiet={!!current}
       />
+
+      {partyUnsaved && (
+        <div role="alert" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">
+          ⚠ Браузер не сохраняет ход партии (закончилось место). Игра идёт, но не закрывайте и не обновляйте эту вкладку —
+          иначе счёт пропадёт. Счёт можно сохранить в «📜 Журнал» → «Сохранить в Excel».
+        </div>
+      )}
 
       {hallStatus === 'waiting-click' && (
         <div role="status" className="rounded-xl border-2 border-white bg-cell px-5 py-3 font-semibold">

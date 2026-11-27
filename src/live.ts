@@ -146,12 +146,14 @@ function readJson<T>(key: string): T | null {
   }
 }
 
-// Записать; если место в хранилище кончилось — убрать сохранённые партии других игр и попробовать ещё раз
-function writeJson(key: string, value: unknown) {
+// Записать; если место в хранилище кончилось — убрать сохранённые партии других игр и попробовать ещё раз.
+// false — так и не записалось (пульт предупредит ведущего)
+function writeJson(key: string, value: unknown): boolean {
   const gameId = key.slice(key.lastIndexOf(':') + 1) // партии этой же игры (и её репетицию) не трогаем
   const text = JSON.stringify(value)
   try {
     localStorage.setItem(key, text)
+    return true
   } catch {
     try {
       for (const other of Object.keys(localStorage)) {
@@ -159,8 +161,9 @@ function writeJson(key: string, value: unknown) {
         if (partOfOther && !other.endsWith(':' + gameId)) localStorage.removeItem(other)
       }
       localStorage.setItem(key, text)
+      return true
     } catch {
-      // хранилище недоступно — игра продолжится без сохранения
+      return false // хранилище недоступно — игра продолжится, но без сохранения
     }
   }
 }
@@ -188,8 +191,9 @@ export function loadState(gameId: string): Partial<LiveState> | null {
   return saved?.game?.id === gameId ? saved : null
 }
 
-export function saveState(state: LiveState) {
-  writeJson(STATE_PREFIX + state.game.id, state)
+// false — партия не записалась: если закрыть вкладку пульта, счёт пропадёт
+export function saveState(state: LiveState): boolean {
+  return writeJson(STATE_PREFIX + state.game.id, state)
 }
 
 export function clearState(gameId: string) {

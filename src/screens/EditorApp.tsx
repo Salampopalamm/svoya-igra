@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import HallPreview, { type PreviewStart } from '../components/HallPreview'
 import QuestionEditor from '../components/QuestionEditor'
+import SaveButton from '../components/SaveButton'
 import ThemeEditor from '../components/ThemeEditor'
 import RulesEditor from '../components/RulesEditor'
 import { ruleProblem } from '../rules'
@@ -61,7 +62,7 @@ function baseNote(question: Question): string | null {
 // Редактор игры: название, категории строками, клик по ячейке открывает редактор вопроса.
 // Правки сохраняются сами.
 export default function EditorApp({ initialGame }: { initialGame: Game }) {
-  const { game, change, saved, dropMedia } = useSavedGame(initialGame)
+  const { game, change, saved, error, retry, flush, dropMedia } = useSavedGame(initialGame)
   const [selectedId, setSelectedId] = useState<string | null>(null) // какой вопрос открыт
   const [roundId, setRoundId] = useState<string | null>(initialGame.rounds[0]?.id ?? null) // какой раунд открыт
   const [previewing, setPreviewing] = useState<PreviewStart | null>(null) // открыт предпросмотр вопроса «как в зале» (с чего начать)
@@ -211,9 +212,7 @@ export default function EditorApp({ initialGame }: { initialGame: Game }) {
           />
         </div>
         <div className="flex items-center gap-4">
-          <span className="text-sm text-muted" aria-live="polite">
-            {saved ? 'Все изменения сохранены' : 'Сохраняю…'}
-          </span>
+          <SaveButton game={game} saved={saved} error={error} onRetry={retry} flush={flush} />
           <a
             href={`#/teams/${encodeURIComponent(game.id)}`}
             className="flex h-11 items-center rounded-lg border border-line px-4 hover:bg-cell"
