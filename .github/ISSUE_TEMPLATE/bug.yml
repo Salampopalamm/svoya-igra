@@ -1,0 +1,63 @@
+name: "🐞 Что-то сломалось"
+description: Игра ведёт себя не так, как должна
+title: "[Баг] "
+labels: ["баг", "от тестировщика"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что проверяешь! Пиши как удобно, главное — чтобы можно было повторить.
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      description: Подставится сам, если открыл анкету кнопкой на тестовом сайте. Иначе — перепиши из красной метки DEV в левом нижнем углу
+      placeholder: 27.11 · 96da391
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Где случилось
+      options:
+        - Пульт ведущего
+        - Экран зала
+        - Редактор игры
+        - Команды и игроки
+        - Другое / не знаю
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Что делал
+      description: По шагам, как можно точнее
+      placeholder: |
+        1. Открыл игру «Тест: кот в мешке»
+        2. Нажал на ячейку 300
+        3. Передал вопрос команде 2
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Что ожидал увидеть
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Что получилось на самом деле
+      description: Сюда можно перетащить скриншот или видео, либо вставить ссылку на запись из Jam
+    validations:
+      required: true
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Насколько мешает
+      options:
+        - Игру нельзя продолжить
+        - Мешает, но можно обойти
+        - Мелочь / косметика
+    validations:
+      required: true

@@ -1,0 +1,24 @@
+name: "💡 Впечатление или идея"
+description: Как ощущается механика, что неудобно, что добавить
+title: "[Идея] "
+labels: ["идея", "от тестировщика"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Версия
+      placeholder: 27.11 · 96da391
+  - type: input
+    id: feature
+    attributes:
+      label: О какой механике
+      placeholder: Кот в мешке, таймер, распределение по командам…
+    validations:
+      required: true
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Что понравилось, что неудобно, что бы ты поменял
+      description: Можно перетащить скриншот или видео
+    validations:
+      required: true
